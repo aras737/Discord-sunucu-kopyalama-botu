@@ -1,87 +1,83 @@
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ChannelType,
-  InteractionType,
-} = require('discord.js');
-
-const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN; // Railway/Koyeb'e girdiğin ana bot tokeni
+const { Client, GatewayIntentBits, ChannelType, PermissionsBitField } = require('discord.js');
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-  partials: [Partials.Channel],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-const RL_DELAY = 1200; // Hız sınırı koruması
+const BOT_TOKEN = "BOT_TOKENINIZI_BURAYA_YAZIN";
+
+client.on('ready', () => {
+    console.log(`${client.user.tag} olarak giriş yapıldı!`);
+});
 
 client.on('messageCreate', async (message) => {
-  if (message.content !== '!kur') return;
+    // Örnek kullanım: !kopyala [Kaynak_Sunucu_ID] [Hedef_Sunucu_ID]
+    if (message.content.startsWith('!kopyala')) {
+        const args = message.content.split(' ');
+        const sourceId = args[1];
+        const targetId = args[2];
 
-  const embed = new EmbedBuilder()
-    .setColor('#f0f0f0')
-    .setTitle('⚙️ Json Sunucu Kopyalama')
-    .setDescription(
-      '**Gelişmiş Klonlama Sistemi**\n' +
-      'Bu araç ile istediğiniz sunucunun tüm kanal, rol ve izin yapılarını saniyeler içerisinde hedef sunucuya aktarabilirsiniz.\n\n' +
-      '🟡 **Klonlanan İçerikler:**\n' +
-      '• Tüm Roller ve İzinler\n• Tüm Kategoriler ve Kanallar\n• Kanal Pozisyonları ve İzinleri\n• Sunucu Adı ve İkonu\n\n' +
-      '🔴 **Önemli Uyarı:**\n' +
-      'Hedef sunucudaki tüm eski kanal ve roller **kalıcı olarak silinecektir!**'
-    );
+        if (!sourceId || !targetId) return message.reply("Lütfen kaynak ve hedef sunucu ID'lerini girin.");
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('baslat')
-      .setLabel('Başlat')
-      .setEmoji('🚫')
-      .setStyle(ButtonStyle.Danger)
-  );
+        const sourceGuild = client.guilds.cache.get(sourceId);
+        const targetGuild = client.guilds.cache.get(targetId);
 
-  await message.channel.send({ embeds: [embed], components: [row] });
-});
+        if (!sourceGuild || !targetGuild) return message.reply("Bot her iki sunucuda da ekli olmalıdır!");
 
-client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton() && interaction.customId === 'baslat') {
-    const modal = new ModalBuilder().setCustomId('copy_modal').setTitle('Sunucu Kopyalama - Bilgiler');
+        message.channel.send("🔄 Kopyalama işlemi başlatıldı, bu biraz zaman alabilir...");
 
-    const inputs = [
-      { id: 'token', label: 'Hesap Tokeni (Self)', ph: 'Aynalandığı hesap tokeni...' },
-      { id: 'source', label: 'Kaynak Sunucu ID', ph: 'Kopyalanacak sunucunun ID...' },
-      { id: 'target', label: 'Hedef Sunucu ID', ph: 'Aktarılacak sunucunun ID...' },
-      { id: 'old_name', label: 'Değişecek İsim (Eski)', ph: 'Örn: dievas', req: false },
-      { id: 'new_name', label: 'Yeni İsim (Yeni)', ph: 'Örn: dievas', req: false }
-    ];
+        try {
+            // 1. Önce Hedef Sunucudaki Eski Kanalları Temizle (Opsiyonel)
+            const channels = await targetGuild.channels.fetch();
+            for (const channel of channels.values()) {
+                await channel.delete().catch(() => {});
+            }
 
-    inputs.forEach(i => {
-      const input = new TextInputBuilder()
-        .setCustomId(i.id)
-        .setLabel(i.label)
-        .setPlaceholder(i.ph)
-        .setStyle(TextInputStyle.Short)
-        .setRequired(i.req !== false);
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-    });
+            // 2. Rolleri Kopyala
+            const roles = await sourceGuild.roles.fetch();
+            for (const role of roles.values()) {
+                if (role.managed || role.name === "@everyone") continue;
+                await targetGuild.roles.create({
+                    name: role.name,
+                    color: role.color,
+                    permissions: role.permissions,
+                    hoist: role.hoist,
+                    mentionable: role.mentionable
+                }).catch(e => console.log(`Rol oluşturulamadı: ${role.name}`));
+            }
 
-    await interaction.showModal(modal);
-  }
+            // 3. Kategorileri ve Kanalları Kopyala
+            const sourceChannels = await sourceGuild.channels.fetch();
+            const categories = sourceChannels.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position);
 
-  if (interaction.type === InteractionType.ModalSubmit) {
-    await interaction.reply({ content: '✅ İşlem başlatıldı...', ephemeral: true });
-    // Klonlama fonksiyonuna verileri gönderiyoruz
-  }
+            for (const category of categories.values()) {
+                const newCategory = await targetGuild.channels.create({
+                    name: category.name,
+                    type: ChannelType.GuildCategory
+                });
+
+                const children = sourceChannels.filter(c => c.parentId === category.id).sort((a, b) => a.position - b.position);
+                for (const child of children.values()) {
+                    await targetGuild.channels.create({
+                        name: child.name,
+                        type: child.type,
+                        parent: newCategory.id,
+                        nsfw: child.nsfw,
+                        topic: child.topic
+                    });
+                }
+            }
+
+            message.channel.send("✅ İşlem başarıyla tamamlandı!");
+        } catch (error) {
+            console.error(error);
+            message.channel.send("❌ Bir hata oluştu. Yetkileri kontrol edin.");
+        }
+    }
 });
 
 client.login(BOT_TOKEN);
