@@ -28,21 +28,36 @@ bot.on('ready', () => {
     console.log(`📌 Komut: !kur`);
 });
 
-// 📩 PANEL KOMUTU
+// 📩 PANEL KOMUTU (Görsel Düzeltilmiş Versiyon)
 bot.on('messageCreate', async (message) => {
     if (message.content === '!kur' && !message.author.bot) {
         const embed = new EmbedBuilder()
-            .setTitle('🚀 Gelişmiş Sunucu Kopyalayıcı')
-            .setDescription('Kopyalama işlemini başlatmak için aşağıdaki butona basın.\n\n**UYARI:** Bu işlem bir kullanıcı hesabı (Self-Bot) gerektirir. Risk size aittir!')
+            .setTitle('⚙️ JSON Sunucu Kopyalama')
             .setColor('#5865F2')
+            .setDescription(
+                `✅ **Gelişmiş Klonlama Sistemi**\n` +
+                `Bu araç ile istediğiniz sunucunun tüm kanal, rol ve izin yapılarını saniyeler içerisinde hedef sunucuya aktarabilirsiniz.\n\n` +
+                `🔹 **Klonlanan İçerikler:**\n` +
+                `> • Tüm Roller ve İzinler\n` +
+                `> • Tüm Kategoriler ve Kanallar\n` +
+                `> • Kanal Pozisyonları ve İzinleri\n` +
+                `> • Sunucu Adı ve İkonu\n\n` +
+                `🔹 **Kullanım Kısıtlaması:**\n` +
+                `> Yetkililer haricindeki kullanıcılar bu paneli **1 saatte 1 kere** kullanabilir.\n\n` +
+                `⚠️ **Önemli Uyarı:**\n` +
+                `Hedef sunucudaki tüm eski kanal ve roller **kalıcı olarak silinecektir!**\n\n` +
+                `⏰ İşlemi başlatmak için aşağıdaki butona basın.`
+            )
+            .addFields({ name: '➕ Kopyalamayı Başlat', value: '*Yeni bir klonlama operasyonu oluşturun.*' })
+            .setFooter({ text: 'Risk size aittir • Self-Bot gerektirir', iconURL: bot.user.displayAvatarURL() })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('copy_trigger')
                 .setLabel('Kopyalamayı Başlat')
-                .setStyle(ButtonStyle.Danger)
-                .setEmoji('🔥')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🚀')
         );
 
         await message.channel.send({ embeds: [embed], components: [row] });
@@ -85,15 +100,14 @@ bot.on('interactionCreate', async (interaction) => {
         await interaction.showModal(modal);
     }
 
-    // 2. MODAL ONAYLANDIĞINDA (KLONLAMA BAŞLAR)
+    // 2. MODAL ONAYLANDIĞINDA
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'copy_modal') {
         const selfToken = interaction.fields.getTextInputValue('self_token');
         const sourceId = interaction.fields.getTextInputValue('source_id');
         const targetId = interaction.fields.getTextInputValue('target_id');
 
-        await interaction.reply({ content: '⏳ Self-bot girişi yapılıyor... Lütfen bekleyin.', ephemeral: true });
+        await interaction.reply({ content: '⏳ Self-bot girişi yapılıyor ve klonlama başlatılıyor...', ephemeral: true });
 
-        // 🟢 SELF BOTU BAŞLAT
         const self = new SelfClient({ checkUpdate: false });
 
         self.on('ready', async () => {
@@ -102,14 +116,16 @@ bot.on('interactionCreate', async (interaction) => {
                 const target = self.guilds.cache.get(targetId);
 
                 if (!source || !target) {
-                    return interaction.followUp({ content: '❌ Sunucu bulunamadı! Tokenin bu sunucularda olduğundan emin olun.', ephemeral: true });
+                    return interaction.followUp({ content: '❌ Sunucu bulunamadı! Tokenin her iki sunucuda da olduğundan emin olun.', ephemeral: true });
                 }
 
-                // A. Hedef Sunucuyu Temizle
+                // A. Hedef Temizliği
                 const targetChannels = await target.channels.fetch();
-                for (const chan of targetChannels.values()) await chan.delete().catch(() => {});
+                for (const chan of targetChannels.values()) {
+                    await chan.delete().catch(() => {});
+                }
 
-                // B. Roller Kopyalanıyor
+                // B. Rol Kopyalama
                 const roles = await source.roles.fetch();
                 for (const role of roles.sort((a, b) => a.position - b.position).values()) {
                     if (role.managed || role.name === "@everyone") continue;
@@ -117,38 +133,41 @@ bot.on('interactionCreate', async (interaction) => {
                         name: role.name,
                         color: role.color,
                         permissions: role.permissions,
-                        hoist: role.hoist
+                        hoist: role.hoist,
+                        mentionable: role.mentionable
                     }).catch(() => {});
                 }
 
-                // C. Kategoriler ve Kanallar Kopyalanıyor
-                const channels = await source.channels.fetch();
-                const categories = channels.filter(c => c.type === 'GUILD_CATEGORY').sort((a, b) => a.position - b.position);
+                // C. Kategori ve Kanal Kopyalama
+                const allChannels = await source.channels.fetch();
+                const categories = allChannels.filter(c => c.type === 'GUILD_CATEGORY').sort((a, b) => a.position - b.position);
 
                 for (const cat of categories.values()) {
                     const newCat = await target.channels.create(cat.name, { type: 'GUILD_CATEGORY' });
-                    const children = channels.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
+                    const children = allChannels.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
                     
                     for (const child of children.values()) {
                         await target.channels.create(child.name, {
                             type: child.type,
                             parent: newCat.id,
-                            nsfw: child.nsfw
+                            nsfw: child.nsfw,
+                            topic: child.topic,
+                            rateLimitPerUser: child.rateLimitPerUser
                         }).catch(() => {});
                     }
                 }
 
-                await interaction.followUp({ content: `✅ Klonlama başarılı! **${source.name}** -> **${target.name}**`, ephemeral: true });
+                await interaction.followUp({ content: `✅ İşlem Tamamlandı! **${source.name}** başarıyla **${target.name}** sunucusuna aktarıldı.`, ephemeral: true });
                 self.destroy();
 
             } catch (err) {
                 console.error(err);
-                interaction.followUp({ content: '❌ Bir hata oluştu! Yetkilerinizi veya tokeni kontrol edin.', ephemeral: true });
+                interaction.followUp({ content: '❌ Kritik bir hata oluştu! Token yetkisiz olabilir veya sunucu koruması vardır.', ephemeral: true });
             }
         });
 
         self.login(selfToken).catch(() => {
-            interaction.followUp({ content: '❌ Geçersiz Self-Token!', ephemeral: true });
+            interaction.followUp({ content: '❌ Geçersiz Token! Lütfen hesaba giriş yapabildiğinizden emin olun.', ephemeral: true });
         });
     }
 });
