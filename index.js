@@ -1,69 +1,71 @@
 require('dotenv').config();
 const { 
-    Client, GatewayIntentBits, ChannelType, ActionRowBuilder, 
-    ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
-    TextInputStyle, EmbedBuilder, InteractionType 
+    Client: BotClient, 
+    GatewayIntentBits, 
+    ActionRowBuilder, 
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle, 
+    InteractionType, 
+    ButtonBuilder, 
+    ButtonStyle, 
+    EmbedBuilder 
 } = require('discord.js');
+const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+// BU ANA BOT (PANELİ GÖSTERECEK OLAN)
+const bot = new BotClient({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-const TOKEN = process.env.DISCORD_BOT_TOKEN;
+bot.on('ready', () => console.log(`🤖 Panel Botu Aktif: ${bot.user.tag}`));
 
-client.on('ready', () => {
-    console.log(`✅ Panel sistemi aktif: ${client.user.tag}`);
+bot.on('messageCreate', async (message) => {
+    if (message.content === '!kur') {
+        const embed = new EmbedBuilder()
+            .setTitle('⚙️ Sunucu Kopyalama Sistemi')
+            .setDescription('Aşağıdaki butona basarak formu açın ve bilgileri girin.')
+            .setColor('#2f3136');
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('btn_copy')
+                .setLabel('Kopyalamayı Başlat')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        await message.channel.send({ embeds: [embed], components: [row] });
+    }
 });
 
-// 1. ADIM: !kur komutu ile Paneli Gönder
-client.on('messageCreate', async (message) => {
-    if (message.content !== '!kur' || message.author.bot) return;
-
-    const embed = new EmbedBuilder()
-        .setColor('#5865F2')
-        .setTitle('🚀 Sunucu Klonlama Paneli')
-        .setDescription('Aşağıdaki butona basarak kopyalama işlemini başlatabilirsiniz.\n\n**Dikkat:** Hedef sunucudaki her şey silinecektir!')
-        .setFooter({ text: 'Güvenli Kopyalama Sistemi' });
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('klon_baslat')
-            .setLabel('Klonlamayı Başlat')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('⚙️')
-    );
-
-    await message.channel.send({ embeds: [embed], components: [row] });
-});
-
-// 2. ADIM: Buton ve Modal İşlemleri
-client.on('interactionCreate', async (interaction) => {
-    
-    // Butona basıldığında Modal (Form) aç
-    if (interaction.isButton() && interaction.customId === 'klon_baslat') {
+bot.on('interactionCreate', async (interaction) => {
+    // MODALI AÇ
+    if (interaction.isButton() && interaction.customId === 'btn_copy') {
         const modal = new ModalBuilder()
-            .setCustomId('klon_modal')
-            .setTitle('Sunucu Bilgilerini Girin');
+            .setCustomId('modal_copy')
+            .setTitle('Self-Bot Kopyalama Formu');
+
+        const tokenInput = new TextInputBuilder()
+            .setCustomId('self_token')
+            .setLabel('Kullanıcı (Self) Tokeni')
+            .setPlaceholder('Hesabınızın tokenini buraya girin...')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
 
         const sourceInput = new TextInputBuilder()
             .setCustomId('source_id')
             .setLabel('Kaynak Sunucu ID')
-            .setPlaceholder('Kopyalanacak sunucunun IDsi')
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
         const targetInput = new TextInputBuilder()
             .setCustomId('target_id')
             .setLabel('Hedef Sunucu ID')
-            .setPlaceholder('Her şeyin silineceği hedef sunucu IDsi')
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
         modal.addComponents(
+            new ActionRowBuilder().addComponents(tokenInput),
             new ActionRowBuilder().addComponents(sourceInput),
             new ActionRowBuilder().addComponents(targetInput)
         );
@@ -71,65 +73,54 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.showModal(modal);
     }
 
-    // Modal gönderildiğinde Kopyalamayı Başlat
-    if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'klon_modal') {
+    // FORM GÖNDERİLDİĞİNDE
+    if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_copy') {
+        const selfToken = interaction.fields.getTextInputValue('self_token');
         const sourceId = interaction.fields.getTextInputValue('source_id');
         const targetId = interaction.fields.getTextInputValue('target_id');
 
-        await interaction.reply({ content: '🔄 İşlem başlatıldı, lütfen bekleyin...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Self-bot girişi yapılıyor ve işlem başlatılıyor...', ephemeral: true });
 
-        const sourceGuild = client.guilds.cache.get(sourceId);
-        const targetGuild = client.guilds.cache.get(targetId);
+        // ARKA PLANDA SELF BOTU ÇALIŞTIR
+        const self = new SelfClient({ checkUpdate: false });
 
-        if (!sourceGuild || !targetGuild) {
-            return interaction.followUp({ content: '❌ Bot iki sunucuda da olmalıdır!', ephemeral: true });
-        }
+        self.on('ready', async () => {
+            try {
+                const source = self.guilds.cache.get(sourceId);
+                const target = self.guilds.cache.get(targetId);
 
-        try {
-            // --- KOPYALAMA MANTIĞI BAŞLANGICI ---
-            
-            // Hedef Sunucuyu Temizle
-            const targetChannels = await targetGuild.channels.fetch();
-            for (const channel of targetChannels.values()) {
-                await channel.delete().catch(() => {});
-            }
-
-            // Rolleri Kopyala
-            const roles = await sourceGuild.roles.fetch();
-            for (const role of roles.values()) {
-                if (role.managed || role.name === "@everyone") continue;
-                await targetGuild.roles.create({
-                    name: role.name,
-                    color: role.color,
-                    permissions: role.permissions,
-                    hoist: role.hoist
-                }).catch(() => {});
-            }
-
-            // Kategorileri ve Kanalları Kopyala
-            const sourceChannels = await sourceGuild.channels.fetch();
-            const categories = sourceChannels.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position);
-
-            for (const category of categories.values()) {
-                const newCat = await targetGuild.channels.create({ name: category.name, type: ChannelType.GuildCategory });
-                const children = sourceChannels.filter(c => c.parentId === category.id).sort((a, b) => a.position - b.position);
-                
-                for (const child of children.values()) {
-                    await targetGuild.channels.create({
-                        name: child.name,
-                        type: child.type,
-                        parent: newCat.id
-                    });
+                if (!source || !target) {
+                    return interaction.followUp({ content: '❌ Sunucu bulunamadı! Tokenin bu sunucularda olduğundan emin ol.', ephemeral: true });
                 }
+
+                // Kopyalama İşlemi (Kanallar ve Kategoriler)
+                const channels = await source.channels.fetch();
+                const categories = channels.filter(c => c.type === 'GUILD_CATEGORY').sort((a, b) => a.position - b.position);
+
+                for (const cat of categories.values()) {
+                    const newCat = await target.channels.create(cat.name, { type: 'GUILD_CATEGORY' });
+                    const children = channels.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
+                    
+                    for (const child of children.values()) {
+                        await target.channels.create(child.name, {
+                            type: child.type,
+                            parent: newCat.id
+                        }).catch(() => {});
+                    }
+                }
+
+                await interaction.followUp({ content: `✅ **${source.name}** başarıyla kopyalandı!`, ephemeral: true });
+                self.destroy(); // İşlem bitince self botu kapat
+            } catch (err) {
+                console.error(err);
+                interaction.followUp({ content: '❌ Bir hata oluştu! (Rate limit veya Yetki eksikliği)', ephemeral: true });
             }
+        });
 
-            await interaction.followUp({ content: `✅ **${sourceGuild.name}** başarıyla **${targetGuild.name}** sunucusuna kopyalandı!`, ephemeral: true });
-
-        } catch (err) {
-            console.error(err);
-            await interaction.followUp({ content: '❌ Bir hata oluştu, yetkileri kontrol et.', ephemeral: true });
-        }
+        self.login(selfToken).catch(() => {
+            interaction.followUp({ content: '❌ Geçersiz Self-Token girdiniz!', ephemeral: true });
+        });
     }
 });
 
-client.login(TOKEN);
+bot.login(process.env.DISCORD_BOT_TOKEN);
