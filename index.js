@@ -22,7 +22,8 @@ const bot = new BotClient({
 });
 
 // 🚀 SAHİP KONTROLÜ İÇİN AYAR
-const OWNER_ID = "1389930042200559706"; // Buraya kendi Discord ID'ni yaz
+const OWNER_ID = "1389930042200559706"; // Senin Discord ID'n
+const BOT_NAME = "Aethelgard Sunucu Kopyalayıcı";
 
 bot.on('ready', () => {
     console.log(`✅ Panel Botu Aktif: ${bot.user.tag}`);
@@ -40,24 +41,19 @@ bot.on('messageCreate', async (message) => {
         }
 
         const embed = new EmbedBuilder()
-            .setTitle('⚙️ Aethelgard Sunucu Kopyalayıcı')
+            .setTitle(`⚙️ ${BOT_NAME}`)
             .setColor('#5865F2')
             .setDescription(
                 `✅ **Gelişmiş Klonlama Sistemi**\n` +
-                `Bu araç ile istediğiniz sunucunun tüm kanal, rol ve izin yapılarını saniyeler içerisinde hedef sunucuya aktarabilirsiniz.\n\n` +
+                `Sunucunun tüm kanal, rol, izin ve ikon yapılarını hedef sunucuya aktarır.\n\n` +
                 `🔹 **Klonlanan İçerikler:**\n` +
-                `> • Tüm Roller ve İzinler\n` +
-                `> • Tüm Kategoriler ve Kanallar\n` +
-                `> • Kanal Pozisyonları ve İzinleri\n` +
-                `> • Sunucu Adı ve İkonu\n\n` +
-                `🔹 **Kullanım Kısıtlaması:**\n` +
-                `> Yetkililer haricindeki kullanıcılar bu paneli **1 saatte 1 kere** kullanabilir.\n\n` +
+                `> • Sunucu Adı ve **İkonu** 🖼️\n` +
+                `> • Tüm **Eski Roller Silinir** ve Yenileri Eklenir 🎭\n` +
+                `> • Tüm Kategoriler ve Kanallar 📂\n\n` +
                 `⚠️ **Önemli Uyarı:**\n` +
-                `Hedef sunucudaki tüm eski kanal ve roller **kalıcı olarak silinecektir!**\n\n` +
-                `⏰ İşlemi başlatmak için aşağıdaki butona basın.`
+                `Hedef sunucudaki **HER ŞEY** (kanallar ve roller) kalıcı olarak silinecektir!`
             )
-            .addFields({ name: '➕ Kopyalamayı Başlat', value: '*Yeni bir klonlama operasyonu oluşturun.*' })
-            .setFooter({ text: 'Risk size aittir • Self-Bot gerektirir' })
+            .setFooter({ text: 'Aethelgard Sistemi • Risk size aittir' })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
@@ -112,7 +108,7 @@ bot.on('interactionCreate', async (interaction) => {
         const sourceId = interaction.fields.getTextInputValue('source_id');
         const targetId = interaction.fields.getTextInputValue('target_id');
 
-        await interaction.reply({ content: '⏳ Klonlama başlatıldı...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Klonlama başlatıldı, roller ve kanallar temizleniyor...', ephemeral: true });
 
         const self = new SelfClient({ checkUpdate: false });
 
@@ -122,19 +118,40 @@ bot.on('interactionCreate', async (interaction) => {
                 const target = self.guilds.cache.get(targetId);
 
                 if (!source || !target) {
-                    return interaction.followUp({ content: '❌ Sunucu bulunamadı!', ephemeral: true });
+                    return interaction.followUp({ content: '❌ Sunucu bulunamadı! Token iki sunucuda da olmalı.', ephemeral: true });
                 }
 
-                // Temizleme ve Kopyalama Mantığı
+                // 1. İsim ve İkon Kopyalama
+                await target.setName(source.name);
+                if (source.iconURL()) {
+                    await target.setIcon(source.iconURL({ dynamic: true, size: 1024 }));
+                }
+
+                // 2. Hedef Kanalları Temizle
                 const targetChannels = await target.channels.fetch();
                 for (const chan of targetChannels.values()) await chan.delete().catch(() => {});
 
-                const roles = await source.roles.fetch();
-                for (const role of roles.sort((a, b) => a.position - b.position).values()) {
-                    if (role.managed || role.name === "@everyone") continue;
-                    await target.roles.create({ name: role.name, color: role.color, permissions: role.permissions }).catch(() => {});
+                // 3. Hedef Rolleri Temizle
+                const targetRoles = await target.roles.fetch();
+                for (const role of targetRoles.values()) {
+                    if (role.managed || role.name === "@everyone" || role.id === target.rulesChannelId) continue;
+                    await role.delete().catch(() => {});
                 }
 
+                // 4. Kaynak Rolleri Oluştur
+                const sourceRoles = await source.roles.fetch();
+                for (const role of sourceRoles.sort((a, b) => a.position - b.position).values()) {
+                    if (role.managed || role.name === "@everyone") continue;
+                    await target.roles.create({ 
+                        name: role.name, 
+                        color: role.color, 
+                        permissions: role.permissions,
+                        hoist: role.hoist,
+                        mentionable: role.mentionable
+                    }).catch(() => {});
+                }
+
+                // 5. Kanalları Kopyala
                 const allChannels = await source.channels.fetch();
                 const categories = allChannels.filter(c => c.type === 'GUILD_CATEGORY').sort((a, b) => a.position - b.position);
 
@@ -142,14 +159,20 @@ bot.on('interactionCreate', async (interaction) => {
                     const newCat = await target.channels.create(cat.name, { type: 'GUILD_CATEGORY' });
                     const children = allChannels.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
                     for (const child of children.values()) {
-                        await target.channels.create(child.name, { type: child.type, parent: newCat.id }).catch(() => {});
+                        await target.channels.create(child.name, { 
+                            type: child.type, 
+                            parent: newCat.id,
+                            nsfw: child.nsfw,
+                            topic: child.topic
+                        }).catch(() => {});
                     }
                 }
 
-                await interaction.followUp({ content: `✅ İşlem Başarılı!`, ephemeral: true });
+                await interaction.followUp({ content: `✅ **Aethelgard** işlemi başarıyla tamamladı! İkon, roller ve kanallar güncellendi.`, ephemeral: true });
                 self.destroy();
             } catch (err) {
-                interaction.followUp({ content: '❌ Bir hata oluştu.', ephemeral: true });
+                console.error(err);
+                interaction.followUp({ content: '❌ Bir hata oluştu. Hedef sunucudaki yetkilerinizi kontrol edin.', ephemeral: true });
             }
         });
 
