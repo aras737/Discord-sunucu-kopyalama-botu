@@ -13,7 +13,6 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// 🤖 ANA BOT (PANELİ GÖSTERECEK OLAN)
 const bot = new BotClient({
     intents: [
         GatewayIntentBits.Guilds,
@@ -22,15 +21,24 @@ const bot = new BotClient({
     ]
 });
 
-// 🚀 BOT HAZIR OLDUĞUNDA
+// 🚀 SAHİP KONTROLÜ İÇİN AYAR
+const OWNER_ID = "1389930042200559706"; // Buraya kendi Discord ID'ni yaz
+
 bot.on('ready', () => {
     console.log(`✅ Panel Botu Aktif: ${bot.user.tag}`);
-    console.log(`📌 Komut: !kur`);
+    console.log(`📌 Kurulum yetkisi sadece ID: ${OWNER_ID} kullanıcısındadır.`);
 });
 
-// 📩 PANEL KOMUTU (Görsel Düzeltilmiş Versiyon)
+// 📩 PANEL KOMUTU
 bot.on('messageCreate', async (message) => {
-    if (message.content === '!kur' && !message.author.bot) {
+    if (message.content === '!kur') {
+        // Sadece bot sahibi kurabilsin kontrolü
+        if (message.author.id !== OWNER_ID) {
+            return message.reply("❌ Bu komutu sadece bot sahibi kullanabilir!").then(msg => {
+                setTimeout(() => msg.delete(), 5000); // 5 saniye sonra uyarıyı siler
+            });
+        }
+
         const embed = new EmbedBuilder()
             .setTitle('⚙️ JSON Sunucu Kopyalama')
             .setColor('#5865F2')
@@ -49,7 +57,7 @@ bot.on('messageCreate', async (message) => {
                 `⏰ İşlemi başlatmak için aşağıdaki butona basın.`
             )
             .addFields({ name: '➕ Kopyalamayı Başlat', value: '*Yeni bir klonlama operasyonu oluşturun.*' })
-            .setFooter({ text: 'Risk size aittir • Self-Bot gerektirir', iconURL: bot.user.displayAvatarURL() })
+            .setFooter({ text: 'Risk size aittir • Self-Bot gerektirir' })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
@@ -61,13 +69,12 @@ bot.on('messageCreate', async (message) => {
         );
 
         await message.channel.send({ embeds: [embed], components: [row] });
+        await message.delete(); // Kurulum komutunu silerek temizlik yapar
     }
 });
 
-// ⚙️ ETKİLEŞİM YÖNETİMİ
+// ⚙️ ETKİLEŞİM YÖNETİMİ (Burada herkes butona basabilir)
 bot.on('interactionCreate', async (interaction) => {
-    
-    // 1. MODAL (FORM) AÇILIŞI
     if (interaction.isButton() && interaction.customId === 'copy_trigger') {
         const modal = new ModalBuilder()
             .setCustomId('copy_modal')
@@ -78,21 +85,21 @@ bot.on('interactionCreate', async (interaction) => {
                 new TextInputBuilder()
                     .setCustomId('self_token')
                     .setLabel('Hesap (Self) Tokeni')
-                    .setPlaceholder('Hesabınızın tokenini buraya yapıştırın')
+                    .setPlaceholder('Tokeninizi buraya yapıştırın')
                     .setStyle(TextInputStyle.Short).setRequired(true)
             ),
             new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
                     .setCustomId('source_id')
                     .setLabel('Kaynak Sunucu ID')
-                    .setPlaceholder('Kopyalanacak sunucunun IDsi')
+                    .setPlaceholder('Kopyalanacak sunucu ID')
                     .setStyle(TextInputStyle.Short).setRequired(true)
             ),
             new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
                     .setCustomId('target_id')
                     .setLabel('Hedef Sunucu ID')
-                    .setPlaceholder('Yapıştırılacak sunucunun IDsi')
+                    .setPlaceholder('Yapıştırılacak sunucu ID')
                     .setStyle(TextInputStyle.Short).setRequired(true)
             )
         );
@@ -100,13 +107,12 @@ bot.on('interactionCreate', async (interaction) => {
         await interaction.showModal(modal);
     }
 
-    // 2. MODAL ONAYLANDIĞINDA
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'copy_modal') {
         const selfToken = interaction.fields.getTextInputValue('self_token');
         const sourceId = interaction.fields.getTextInputValue('source_id');
         const targetId = interaction.fields.getTextInputValue('target_id');
 
-        await interaction.reply({ content: '⏳ Self-bot girişi yapılıyor ve klonlama başlatılıyor...', ephemeral: true });
+        await interaction.reply({ content: '⏳ Klonlama başlatıldı...', ephemeral: true });
 
         const self = new SelfClient({ checkUpdate: false });
 
@@ -116,59 +122,38 @@ bot.on('interactionCreate', async (interaction) => {
                 const target = self.guilds.cache.get(targetId);
 
                 if (!source || !target) {
-                    return interaction.followUp({ content: '❌ Sunucu bulunamadı! Tokenin her iki sunucuda da olduğundan emin olun.', ephemeral: true });
+                    return interaction.followUp({ content: '❌ Sunucu bulunamadı!', ephemeral: true });
                 }
 
-                // A. Hedef Temizliği
+                // Temizleme ve Kopyalama Mantığı
                 const targetChannels = await target.channels.fetch();
-                for (const chan of targetChannels.values()) {
-                    await chan.delete().catch(() => {});
-                }
+                for (const chan of targetChannels.values()) await chan.delete().catch(() => {});
 
-                // B. Rol Kopyalama
                 const roles = await source.roles.fetch();
                 for (const role of roles.sort((a, b) => a.position - b.position).values()) {
                     if (role.managed || role.name === "@everyone") continue;
-                    await target.roles.create({
-                        name: role.name,
-                        color: role.color,
-                        permissions: role.permissions,
-                        hoist: role.hoist,
-                        mentionable: role.mentionable
-                    }).catch(() => {});
+                    await target.roles.create({ name: role.name, color: role.color, permissions: role.permissions }).catch(() => {});
                 }
 
-                // C. Kategori ve Kanal Kopyalama
                 const allChannels = await source.channels.fetch();
                 const categories = allChannels.filter(c => c.type === 'GUILD_CATEGORY').sort((a, b) => a.position - b.position);
 
                 for (const cat of categories.values()) {
                     const newCat = await target.channels.create(cat.name, { type: 'GUILD_CATEGORY' });
                     const children = allChannels.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
-                    
                     for (const child of children.values()) {
-                        await target.channels.create(child.name, {
-                            type: child.type,
-                            parent: newCat.id,
-                            nsfw: child.nsfw,
-                            topic: child.topic,
-                            rateLimitPerUser: child.rateLimitPerUser
-                        }).catch(() => {});
+                        await target.channels.create(child.name, { type: child.type, parent: newCat.id }).catch(() => {});
                     }
                 }
 
-                await interaction.followUp({ content: `✅ İşlem Tamamlandı! **${source.name}** başarıyla **${target.name}** sunucusuna aktarıldı.`, ephemeral: true });
+                await interaction.followUp({ content: `✅ İşlem Başarılı!`, ephemeral: true });
                 self.destroy();
-
             } catch (err) {
-                console.error(err);
-                interaction.followUp({ content: '❌ Kritik bir hata oluştu! Token yetkisiz olabilir veya sunucu koruması vardır.', ephemeral: true });
+                interaction.followUp({ content: '❌ Bir hata oluştu.', ephemeral: true });
             }
         });
 
-        self.login(selfToken).catch(() => {
-            interaction.followUp({ content: '❌ Geçersiz Token! Lütfen hesaba giriş yapabildiğinizden emin olun.', ephemeral: true });
-        });
+        self.login(selfToken).catch(() => interaction.followUp({ content: '❌ Geçersiz Token!', ephemeral: true }));
     }
 });
 
