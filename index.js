@@ -40,7 +40,7 @@ bot.on('messageCreate', async (message) => {
         }
 
         const embed = new EmbedBuilder()
-            .setTitle('⚙️ JSON Sunucu Kopyalama')
+            .setTitle('⚙️ Aethelgard Sunucu Kopyalayıcı')
             .setColor('#5865F2')
             .setDescription(
                 `✅ **Gelişmiş Klonlama Sistemi**\n` +
