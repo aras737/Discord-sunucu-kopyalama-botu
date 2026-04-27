@@ -1,5 +1,4 @@
 const { 
-    SlashCommandBuilder, 
     EmbedBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
@@ -11,77 +10,72 @@ const {
 } = require('discord.js');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('sorgu')
-        .setDescription('FORCES ID Sorgu Panelini açar.'),
+    name: '!sorgu', // Mesaj komutu
+    async execute(message, args) {
+        const OWNER_ID = "1389930042200559706"; // Senin ID'n
 
-    async execute(interaction) {
-        // --- 1. VİTRİN PANELİ (Görseldeki Tasarım) ---
-        const mainEmbed = new EmbedBuilder()
-            .setColor('#2b2d31')
-            .setAuthor({ 
-                name: '🆔 FORCES ID Sorgu Paneli 🕵️', 
-                iconURL: interaction.client.user.displayAvatarURL() 
-            })
-            .setTitle('Nasıl Kullanılır?')
-            .setDescription(
-                `▫️ **1.** Aşağıdaki **Sorgula** butonuna tıkla.\n` +
-                `▫️ **2.** Açılan alana sorgulamak istediğin Discord ID'yi gir.\n` +
-                `▫️ **3.** Sonuçları detaylı embed mesaj olarak alırsın.\n\n` +
-                `---\n` +
-                `🛡️ Sorgu hem hızlı hem de gizlidir. Tüm analizler veritabanına erişerek yapılır!`
-            )
-            .setFooter({ text: '⚡ MADE BY FORCES | Discord ID Paneli' });
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('btn_sorgu_tetik')
-                .setLabel('Sorgula')
-                .setStyle(ButtonStyle.Success)
-        );
-
-        // Paneli gönderiyoruz (Sadece komutu yazana görünür)
-        const response = await interaction.reply({ 
-            embeds: [mainEmbed], 
-            components: [row], 
-            ephemeral: true 
-        });
-
-        // --- 2. ÇALIŞMA PRENSİBİ (EVENTLER) ---
-        // Buton tıklamalarını ve Modal gönderimlerini bu komutun içinden dinliyoruz
-        const collector = response.createMessageComponentCollector({ time: 300000 }); // 5 dakika aktif kalır
-
-        collector.on('collect', async i => {
-            if (i.customId === 'btn_sorgu_tetik') {
-                // MODAL AÇILIŞI
-                const modal = new ModalBuilder()
-                    .setCustomId('modal_id_sorgu')
-                    .setTitle('Kullanıcı Bilgi Sorgu');
-
-                const idInput = new TextInputBuilder()
-                    .setCustomId('target_id_input')
-                    .setLabel('Discord ID Giriniz')
-                    .setPlaceholder('1389930042200559706')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const rowModal = new ActionRowBuilder().addComponents(idInput);
-                modal.addComponents(rowModal);
-
-                await i.showModal(modal);
+        // --- SADECE SENİN KULLANABİLECEĞİN PANEL KURMA KISMI ---
+        if (args[0] === 'panel') {
+            if (message.author.id !== OWNER_ID) {
+                return message.reply("❌ Bu paneli sadece bot sahibi kurabilir.");
             }
-        });
 
-        // Modal gönderildiğinde çalışacak "Interaction" dinleyicisi
-        const modalFilter = (mInt) => mInt.type === InteractionType.ModalSubmit && mInt.customId === 'modal_id_sorgu';
-        
-        interaction.client.on('interactionCreate', async (mInt) => {
-            if (!modalFilter(mInt)) return;
+            const panelEmbed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setAuthor({ 
+                    name: '🆔 FORCES ID Sorgu Paneli 🕵️', 
+                    iconURL: message.client.user.displayAvatarURL() 
+                })
+                .setTitle('Nasıl Kullanılır?')
+                .setDescription(
+                    `▫️ **1.** Aşağıdaki **Sorgula** butonuna tıkla.\n` +
+                    `▫️ **2.** Açılan alana sorgulamak istediğin Discord ID'yi gir.\n` +
+                    `▫️ **3.** Sonuçları detaylı embed mesaj olarak alırsın.\n\n` +
+                    `---\n` +
+                    `🛡️ Sorgu sistemi aktiftir. Tüm analizler veritabanına erişerek yapılır!`
+                )
+                .setFooter({ text: '⚡ MADE BY FORCES | Discord ID Paneli' });
 
-            const targetId = mInt.fields.getTextInputValue('target_id_input');
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('user_sorgu_button')
+                    .setLabel('Sorgula')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🔍')
+            );
+
+            await message.channel.send({ embeds: [panelEmbed], components: [row] });
+            return message.delete(); // Atılan !sorgu panel mesajını siler, temiz durur.
+        }
+
+        // --- EVENTLER (HERKES İÇİN ÇALIŞAN KISIM) ---
+        // Not: Index.js'deki akıllı sistem interactionCreate'i buraya yönlendirecek.
+    },
+
+    // Buton ve Modal etkileşimlerini yöneten asıl fonksiyon
+    async handleInteraction(interaction) {
+        // 1. BUTONA BASILDIĞINDA (MODAL AÇILIŞI)
+        if (interaction.isButton() && interaction.customId === 'user_sorgu_button') {
+            const modal = new ModalBuilder()
+                .setCustomId('modal_sorgu_system')
+                .setTitle('Kullanıcı Sorgu Paneli');
+
+            const idInput = new TextInputBuilder()
+                .setCustomId('sorgu_id_input')
+                .setLabel('Sorgulanacak ID')
+                .setPlaceholder('Örn: 1389930042200559706')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(idInput));
+            return await interaction.showModal(modal);
+        }
+
+        // 2. MODAL GÖNDERİLDİĞİNDE (SONUÇLAR)
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_sorgu_system') {
+            const targetId = interaction.fields.getTextInputValue('sorgu_id_input');
 
             try {
-                // Discord API üzerinden bilgileri şak diye çekiyoruz
                 const user = await interaction.client.users.fetch(targetId);
                 
                 const resultEmbed = new EmbedBuilder()
@@ -92,18 +86,16 @@ module.exports = {
                         { name: '🆔 Kullanıcı ID', value: `\`${user.id}\``, inline: true },
                         { name: '👤 Kullanıcı Adı', value: `${user.username}`, inline: true },
                         { name: '📅 Hesap Kuruluş', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: false },
-                        { name: '🤖 Bot mu?', value: user.bot ? 'Evet' : 'Hayır', inline: true }
+                        { name: '🤖 Durum', value: user.bot ? 'Bot Hesabı' : 'Gerçek Kullanıcı', inline: true }
                     )
-                    .setFooter({ text: 'Sorgu Tamamlandı • FORCES DB' })
+                    .setFooter({ text: 'Sorgulayan: ' + interaction.user.tag })
                     .setTimestamp();
 
-                await mInt.reply({ embeds: [resultEmbed], ephemeral: true });
+                await interaction.reply({ embeds: [resultEmbed], ephemeral: true });
 
             } catch (err) {
-                if (!mInt.replied) {
-                    await mInt.reply({ content: '❌ Geçersiz ID veya kullanıcı bulunamadı!', ephemeral: true });
-                }
+                await interaction.reply({ content: '❌ Geçersiz ID veya kullanıcı bulunamadı!', ephemeral: true });
             }
-        });
-    },
+        }
+    }
 };
