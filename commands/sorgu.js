@@ -3,37 +3,46 @@ const {
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle, 
     InteractionType 
 } = require('discord.js');
 
 module.exports = {
-    name: '!sorgu', // Mesaj komutu
+    name: '!sorgu',
     async execute(message, args) {
         const OWNER_ID = "1389930042200559706"; // Senin ID'n
+        const client = message.client;
 
-        // --- SADECE SENİN KULLANABİLECEĞİN PANEL KURMA KISMI ---
+        // --- SELF-EXECUTING EVENT LISTENER (YÖNLENDİRMEYİ İÇİNE GÖMDÜK) ---
+        // Bu kısım sayesinde buton ve modal işlemleri index.js'den bağımsız burada döner.
+        if (!client.sorguListenerSet) {
+            client.on('interactionCreate', async (interaction) => {
+                await this.handleInteraction(interaction);
+            });
+            client.sorguListenerSet = true; // Eventin birden fazla kez tanımlanmasını engeller
+        }
+
+        // --- PANEL KURULUMU: Sadece sen '!sorgu panel' yazınca çalışır ---
         if (args[0] === 'panel') {
-            if (message.author.id !== OWNER_ID) {
-                return message.reply("❌ Bu paneli sadece bot sahibi kurabilir.");
-            }
+            if (message.author.id !== OWNER_ID) return;
 
             const panelEmbed = new EmbedBuilder()
                 .setColor('#2b2d31')
                 .setAuthor({ 
                     name: '🆔 FORCES ID Sorgu Paneli 🕵️', 
-                    iconURL: message.client.user.displayAvatarURL() 
+                    iconURL: client.user.displayAvatarURL() 
                 })
-                .setTitle('Nasıl Kullanılır?')
+                .setTitle('Discord kullanıcı ID’si ile veri sorgulamak için en kolay yol!')
                 .setDescription(
                     `▫️ **1.** Aşağıdaki **Sorgula** butonuna tıkla.\n` +
-                    `▫️ **2.** Açılan alana sorgulamak istediğin Discord ID'yi gir.\n` +
-                    `▫️ **3.** Sonuçları detaylı embed mesaj olarak alırsın.\n\n` +
+                    `▫️ **2.** Açılan alana sorgulamak istediğin Discord ID'yi gir (örn: 123456789012345678).\n` +
+                    `▫️ **3.** Sonuçları sadece sana özel, detaylı embed mesaj olarak alırsın.\n\n` +
                     `---\n` +
-                    `🛡️ Sorgu sistemi aktiftir. Tüm analizler veritabanına erişerek yapılır!`
+                    `🛡️ Sorgu hem hızlı hem de gizlidir. Tüm analizler veritabanına erişerek yapılır!`
                 )
+                .setImage('https://i.imgur.com/kSly8Z6.png') // Berk Forces Banner
                 .setFooter({ text: '⚡ MADE BY FORCES | Discord ID Paneli' });
 
             const row = new ActionRowBuilder().addComponents(
@@ -45,15 +54,13 @@ module.exports = {
             );
 
             await message.channel.send({ embeds: [panelEmbed], components: [row] });
-            return message.delete(); // Atılan !sorgu panel mesajını siler, temiz durur.
+            return message.delete().catch(() => {}); 
         }
-
-        // --- EVENTLER (HERKES İÇİN ÇALIŞAN KISIM) ---
-        // Not: Index.js'deki akıllı sistem interactionCreate'i buraya yönlendirecek.
     },
 
-    // Buton ve Modal etkileşimlerini yöneten asıl fonksiyon
+    // --- ETKİLEŞİM YÖNETİCİSİ (Buton ve Modal İşlemleri) ---
     async handleInteraction(interaction) {
+        
         // 1. BUTONA BASILDIĞINDA (MODAL AÇILIŞI)
         if (interaction.isButton() && interaction.customId === 'user_sorgu_button') {
             const modal = new ModalBuilder()
@@ -63,16 +70,22 @@ module.exports = {
             const idInput = new TextInputBuilder()
                 .setCustomId('sorgu_id_input')
                 .setLabel('Sorgulanacak ID')
-                .setPlaceholder('Örn: 1389930042200559706')
+                .setPlaceholder('Buraya bir ID yapıştır...')
                 .setStyle(TextInputStyle.Short)
-                .setRequired(true);
+                .setRequired(true)
+                .setMinLength(15)
+                .setMaxLength(21);
 
             modal.addComponents(new ActionRowBuilder().addComponents(idInput));
-            return await interaction.showModal(modal);
+            return await interaction.showModal(modal).catch(() => {});
         }
 
-        // 2. MODAL GÖNDERİLDİĞİNDE (SONUÇLAR)
+        // 2. MODAL GÖNDERİLDİĞİNDE (BİLGİLERİ DÖKME)
         if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_sorgu_system') {
+            
+            // "Etkileşim Başarısız" hatasını önlemek için deferReply
+            await interaction.deferReply({ ephemeral: true });
+
             const targetId = interaction.fields.getTextInputValue('sorgu_id_input');
 
             try {
@@ -84,17 +97,23 @@ module.exports = {
                     .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }))
                     .addFields(
                         { name: '🆔 Kullanıcı ID', value: `\`${user.id}\``, inline: true },
-                        { name: '👤 Kullanıcı Adı', value: `${user.username}`, inline: true },
-                        { name: '📅 Hesap Kuruluş', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: false },
-                        { name: '🤖 Durum', value: user.bot ? 'Bot Hesabı' : 'Gerçek Kullanıcı', inline: true }
+                        { name: '👤 Kullanıcı Adı', value: `\`${user.username}\``, inline: true },
+                        { name: '📅 Hesap Kuruluş', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:D> (<t:${Math.floor(user.createdTimestamp / 1000)}:R>)`, inline: false },
+                        { name: '🤖 Durum', value: user.bot ? '✅ Bot Hesabı' : '👤 Gerçek Kullanıcı', inline: true }
                     )
-                    .setFooter({ text: 'Sorgulayan: ' + interaction.user.tag })
+                    .setFooter({ text: `Sorgulayan: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
                     .setTimestamp();
 
-                await interaction.reply({ embeds: [resultEmbed], ephemeral: true });
+                // Kullanıcının banner'ını çekmek için tam veriyi al
+                const fullUser = await user.fetch();
+                if (fullUser.banner) {
+                    resultEmbed.setImage(fullUser.bannerURL({ dynamic: true, size: 1024 }));
+                }
+
+                await interaction.editReply({ embeds: [resultEmbed] });
 
             } catch (err) {
-                await interaction.reply({ content: '❌ Geçersiz ID veya kullanıcı bulunamadı!', ephemeral: true });
+                await interaction.editReply({ content: '❌ **Hata:** Geçersiz bir ID girdiniz veya kullanıcı bulunamadı!' });
             }
         }
     }
