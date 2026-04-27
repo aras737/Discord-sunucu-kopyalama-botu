@@ -8,7 +8,7 @@ const {
     TextInputStyle, 
     InteractionType 
 } = require('discord.js');
-const { Client: SelfClient } = require('discord.js-selfbot-v13'); // Self-bot kütüphanesi şart
+const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
 module.exports = {
     name: '!kur',
@@ -16,31 +16,26 @@ module.exports = {
         const OWNER_ID = "1389930042200559706";
         if (message.author.id !== OWNER_ID) return;
 
-        // --- SELF-CONTAINED EVENT LISTENER ---
-        if (!message.client.kurSelfListener) {
-            message.client.on('interactionCreate', async (int) => {
-                if (int.customId === 'btn_self_clone' || int.customId === 'modal_self_clone') {
+        const client = message.client;
+        if (!client.kurListenerSet) {
+            client.on('interactionCreate', async (int) => {
+                if (int.customId === 'btn_kur_setup' || int.customId === 'modal_kur_setup') {
                     await this.handleInteraction(int);
                 }
             });
-            message.client.kurSelfListener = true;
+            client.kurListenerSet = true;
         }
 
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
-            .setAuthor({ name: 'FORCES Self-Bot Klonlayıcı', iconURL: message.client.user.displayAvatarURL() })
-                .setDescription(
-                `🚀 **Self-Bot ile Sunucu Kopyalama**\n\n` +
-                `▫️ Kaynak sunucudaki tüm kanallar ve kategoriler self-bot aracılığıyla okunur.\n` +
-                `▫️ Hedef sunucuya birebir inşa edilir.\n\n` +
-                `**Uyarı:** İşlem başladığında hedefteki tüm kanallar silinir!`
-            )
-            .setFooter({ text: 'Aethelgard Protection System' });
+            .setAuthor({ name: 'FORCES Sunucu Taşıma Sistemi' })
+            .setTitle('🚀 Kurulum Sihirbazı')
+            .setDescription('Self-bot kullanarak bir sunucuyu diğerine kopyalar.\n\n**Gerekli Bilgiler:**\n▫️ Self Token\n▫️ Kaynak Sunucu ID\n▫️ Hedef Sunucu ID');
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('btn_self_clone')
-                .setLabel('Self-Bot Kurulumunu Başlat')
+                .setCustomId('btn_kur_setup')
+                .setLabel('Kurulumu Başlat')
                 .setStyle(ButtonStyle.Danger)
         );
 
@@ -48,72 +43,78 @@ module.exports = {
     },
 
     async handleInteraction(interaction) {
-        if (interaction.isButton() && interaction.customId === 'btn_self_clone') {
-            const modal = new ModalBuilder().setCustomId('modal_self_clone').setTitle('Self-Bot Yapılandırma');
-            
+        if (interaction.isButton() && interaction.customId === 'btn_kur_setup') {
+            const modal = new ModalBuilder().setCustomId('modal_kur_setup').setTitle('Klonlama Bilgileri');
+
             modal.addComponents(
                 new ActionRowBuilder().addComponents(
-                    new TextInputBuilder().setCustomId('token').setLabel('Self-Bot Token').setPlaceholder('Hesap tokenini girin...').setStyle(TextInputStyle.Short).setRequired(true)
+                    new TextInputBuilder().setCustomId('tkn').setLabel('Self-Bot Token').setStyle(TextInputStyle.Short).setRequired(true)
                 ),
                 new ActionRowBuilder().addComponents(
-                    new TextInputBuilder().setCustomId('source').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
+                    new TextInputBuilder().setCustomId('src').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder().setCustomId('trg').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
                 )
             );
             return await interaction.showModal(modal);
         }
 
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_self_clone') {
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_kur_setup') {
             await interaction.deferReply({ ephemeral: true });
 
-            const token = interaction.fields.getTextInputValue('token');
-            const sourceId = interaction.fields.getTextInputValue('source');
-            const targetGuild = interaction.guild; // Komutun kullanıldığı sunucu hedef alınır
+            const token = interaction.fields.getTextInputValue('tkn');
+            const sourceId = interaction.fields.getTextInputValue('src');
+            const targetId = interaction.fields.getTextInputValue('trg');
+
+            const targetGuild = interaction.client.guilds.cache.get(targetId);
+            if (!targetGuild) return interaction.editReply('❌ Hedef sunucuyu bulamadım. Botun orada yönetici olması lazım!');
 
             const self = new SelfClient({ checkUpdate: false });
 
             self.on('ready', async () => {
                 try {
                     const sourceGuild = self.guilds.cache.get(sourceId);
-                    if (!sourceGuild) return interaction.editReply('❌ Self-bot bu kaynak sunucuda yok!');
+                    if (!sourceGuild) return interaction.editReply('❌ Self-bot kaynak sunucuda bulunmuyor!');
 
-                    await interaction.editReply('🔄 Temizlik ve kopyalama başladı...');
+                    await interaction.editReply('🔄 Temizlik başladı...');
 
-                    // 1. ADIM: Hedef Sunucuyu Temizle (Bot Yetkisiyle)
-                    const targetChannels = await targetGuild.channels.fetch();
-                    for (const ch of targetChannels.values()) {
-                        await ch.delete().catch(() => {});
-                    }
+                    // 1. Hedef Sunucu Temizliği
+                    const targetChans = await targetGuild.channels.fetch();
+                    for (const c of targetChans.values()) await c.delete().catch(() => {});
 
-                    // 2. ADIM: Kanalları Kopyala (Self-bottan oku, Hedefe yaz)
-                    const sourceChannels = sourceGuild.channels.cache.sort((a, b) => a.position - b.position);
+                    await interaction.editReply('🏗️ Kanallar inşa ediliyor...');
+
+                    // 2. Kanalları Kopyala (v13 self -> v14 bot)
+                    const sourceChans = sourceGuild.channels.cache.sort((a, b) => a.position - b.position);
                     
                     // Önce Kategoriler
-                    const categories = sourceChannels.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
-                    for (const cat of categories.values()) {
-                        const newCat = await targetGuild.channels.create(cat.name, { type: 4 }); // 4 = Category
+                    const cats = sourceChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
+                    for (const cat of cats.values()) {
+                        const newCat = await targetGuild.channels.create({ name: cat.name, type: 4 });
 
                         // Alt Kanallar
-                        const children = sourceChannels.filter(c => c.parentId === cat.id);
+                        const children = sourceChans.filter(c => c.parentId === cat.id);
                         for (const child of children.values()) {
-                            let type = child.type === 'GUILD_VOICE' || child.type === 2 ? 2 : 0; // Ses mi Metin mi?
-                            await targetGuild.channels.create(child.name, {
+                            let type = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
+                            await targetGuild.channels.create({
+                                name: child.name,
                                 type: type,
                                 parent: newCat.id
                             });
-                            await new Promise(r => setTimeout(r, 600)); // Rate limit koruması
+                            await new Promise(r => setTimeout(r, 700));
                         }
                     }
                     
-                    await interaction.editReply('✅ Kanallar başarıyla kopyalandı!');
+                    await interaction.editReply('✅ Kopyalama tamamlandı!');
                     self.destroy();
-
                 } catch (err) {
-                    await interaction.editReply('❌ Hata: ' + err.message);
+                    await interaction.editReply('Hata: ' + err.message);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply('❌ Geçersiz Token!'));
+            self.login(token).catch(() => interaction.editReply('❌ Token hatalı!'));
         }
     }
 };
