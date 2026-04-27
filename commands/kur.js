@@ -13,14 +13,13 @@ const { Client: SelfClient } = require('discord.js-selfbot-v13');
 module.exports = {
     name: '!kur',
     async execute(message) {
-        const OWNER_ID = "1389930042200559706"; // Senin ID'n
+        const OWNER_ID = "1389930042200559706";
         if (message.author.id !== OWNER_ID) return;
 
-        // --- SELF-SETUP EVENT LISTENER ---
         const client = message.client;
         if (!client.kurSelfListenerSet) {
             client.on('interactionCreate', async (int) => {
-                if (int.customId === 'btn_self_kur' || int.customId === 'modal_self_kur') {
+                if (int.customId === 'btn_self_full_kur' || int.customId === 'modal_self_full_kur') {
                     await this.handleInteraction(int);
                 }
             });
@@ -29,53 +28,44 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
-            .setAuthor({ name: 'FORCES | Sunucu Klonlayıcı', iconURL: client.user.displayAvatarURL() })
-            .setTitle('🕵️ Self-Bot Kurulum Sistemi')
+            .setAuthor({ name: 'FORCES Full Klonlama', iconURL: client.user.displayAvatarURL() })
+            .setTitle('🚀 Komple Sunucu Değişimi')
             .setDescription(
-                `Bu sistem ana botun yetkilerini kullanmaz, tamamen **senin hesabın** üzerinden işlem yapar.\n\n` +
-                `▫️ **Kaynak ID:** Kanalların alınacağı yer.\n` +
-                `▫️ **Hedef ID:** Yeni kanalların açılacağı yer.\n\n` +
-                `**Uyarı:** İşlem başladığında hedef sunucudaki tüm kanallar hesabın tarafından silinecektir!`
-            )
-            .setFooter({ text: 'FORCES Development' });
+                `Bu işlem senin hesabın üzerinden şu sırayla yapılır:\n\n` +
+                `▫️ **1.** Hedefteki tüm kanallar silinir.\n` +
+                `▫️ **2.** Hedefteki tüm roller (temizlenebilenler) silinir.\n` +
+                `▫️ **3.** Kaynaktaki roller oluşturulur.\n` +
+                `▫️ **4.** Kaynaktaki kategoriler ve kanallar oluşturulur.`
+            );
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('btn_self_kur')
-                .setLabel('Kurulumu Başlat')
+                .setCustomId('btn_self_full_kur')
+                .setLabel('Full Kurulumu Başlat')
                 .setStyle(ButtonStyle.Danger)
-                .setEmoji('⚙️')
         );
 
         await message.reply({ embeds: [embed], components: [row] });
     },
 
     async handleInteraction(interaction) {
-        if (interaction.isButton() && interaction.customId === 'btn_self_kur') {
-            const modal = new ModalBuilder().setCustomId('modal_self_kur').setTitle('Self-Bot Bilgileri');
-            
+        if (interaction.isButton() && interaction.customId === 'btn_self_full_kur') {
+            const modal = new ModalBuilder().setCustomId('modal_self_full_kur').setTitle('Full Klonlama');
             modal.addComponents(
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder().setCustomId('token').setLabel('Hesap Tokenin').setPlaceholder('Tokenini buraya yapıştır...').setStyle(TextInputStyle.Short).setRequired(true)
-                ),
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder().setCustomId('src').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
-                ),
-                new ActionRowBuilder().addComponents(
-                    new TextInputBuilder().setCustomId('trg').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
-                )
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('token').setLabel('Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('src').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('trg').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
             );
             return await interaction.showModal(modal);
         }
 
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_self_kur') {
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_self_full_kur') {
             await interaction.deferReply({ ephemeral: true });
 
             const token = interaction.fields.getTextInputValue('token');
             const sourceId = interaction.fields.getTextInputValue('src');
             const targetId = interaction.fields.getTextInputValue('trg');
 
-            // Self-botu başlatıyoruz
             const self = new SelfClient({ checkUpdate: false });
 
             self.on('ready', async () => {
@@ -83,51 +73,64 @@ module.exports = {
                     const sourceGuild = self.guilds.cache.get(sourceId);
                     const targetGuild = self.guilds.cache.get(targetId);
 
-                    if (!sourceGuild || !targetGuild) {
-                        return interaction.editReply('❌ Hata: Hesabın belirtilen sunuculardan birinde bulunmuyor!');
+                    if (!sourceGuild || !targetGuild) return interaction.editReply('❌ Sunucular bulunamadı!');
+
+                    await interaction.editReply('🔄 Temizlik başlıyor (Kanal & Rol)...');
+
+                    // 1. KANALLARI SİL
+                    for (const ch of targetGuild.channels.cache.values()) {
+                        await ch.delete().catch(() => {});
+                        await new Promise(r => setTimeout(r, 200));
                     }
 
-                    await interaction.editReply('🔄 İşlem başladı... Kanallar temizleniyor.');
+                    // 2. ROLLERİ SİL (En üstteki roller ve @everyone hariç)
+                    const targetRoles = targetGuild.roles.cache.filter(r => r.name !== '@everyone' && !r.managed);
+                    for (const role of targetRoles.values()) {
+                        await role.delete().catch(() => {});
+                        await new Promise(r => setTimeout(r, 200));
+                    }
 
-                    // 1. ADIM: Hedef Sunucuyu Temizle (Senin hesabınla)
-                    const targetChans = targetGuild.channels.cache;
-                    for (const ch of targetChans.values()) {
-                        await ch.delete().catch(() => {});
-                        await new Promise(r => setTimeout(r, 200)); 
+                    await interaction.editReply('🏗️ Roller kopyalanıyor...');
+
+                    // 3. ROLLERİ OLUŞTUR
+                    const sourceRoles = sourceGuild.roles.cache.filter(r => r.name !== '@everyone' && !r.managed).sort((a, b) => a.position - b.position);
+                    for (const r of sourceRoles.values()) {
+                        await targetGuild.roles.create({
+                            name: r.name,
+                            color: r.color,
+                            permissions: r.permissions,
+                            hoist: r.hoist,
+                            mentionable: r.mentionable
+                        }).catch(() => {});
+                        await new Promise(r => setTimeout(r, 300));
                     }
 
                     await interaction.editReply('🏗️ Kanallar kopyalanıyor...');
 
-                    // 2. ADIM: Kanalları Kopyala (Senin hesabınla)
+                    // 4. KANALLARI OLUŞTUR (Kategori ve Alt Kanallar)
                     const sourceChans = sourceGuild.channels.cache.sort((a, b) => a.position - b.position);
-                    
-                    // Önce Kategoriler
                     const categories = sourceChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
+                    
                     for (const cat of categories.values()) {
                         const newCat = await targetGuild.channels.create(cat.name, { type: 4 });
-
-                        // Kategorinin Altındaki Kanallar
                         const children = sourceChans.filter(c => c.parentId === cat.id);
                         for (const child of children.values()) {
                             let cType = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
-                            await targetGuild.channels.create(child.name, {
-                                type: cType,
-                                parent: newCat.id
-                            }).catch(() => {});
-                            await new Promise(r => setTimeout(r, 500)); // Rate limit koruması
+                            await targetGuild.channels.create(child.name, { type: cType, parent: newCat.id }).catch(() => {});
+                            await new Promise(r => setTimeout(r, 500));
                         }
                     }
-                    
-                    await interaction.editReply('✅ Kopyalama işlemi başarıyla tamamlandı!');
+
+                    await interaction.editReply('✅ Full kopyalama (Rol + Kanal) tamamlandı!');
                     self.destroy();
 
                 } catch (err) {
-                    await interaction.editReply('❌ Hata oluştu: ' + err.message);
+                    await interaction.editReply('Hata: ' + err.message);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply('❌ Geçersiz Token girdin!'));
+            self.login(token).catch(() => interaction.editReply('❌ Token hatalı!'));
         }
     }
 };
