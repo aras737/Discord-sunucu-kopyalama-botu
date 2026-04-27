@@ -1,61 +1,57 @@
-const { 
-    SlashCommandBuilder, 
-    EmbedBuilder, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle,
-    InteractionType 
-} = require('discord.js');
-const { Client: SelfClient } = require('discord.js-selfbot-v13');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Sunucuyu kopyalar ve kanallara spam efekti yapar.'),
+        .setName('mesaj_spam')
+        .setDescription('Sunucudaki tüm kanallara istediğiniz mesajı gönderir.'),
 
     async execute(interaction) {
-        // PANEL ARAYÜZÜ
+        // Arayüz paneli
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
-            .setTitle(`: discord.gg/base64`)
-            .addFields({ name: 'mesaj:', value: '7272' })
-            .setFooter({ text: 'Sadece yetkililer görebilir' });
+            .setTitle('🚀 Mesaj Spam Terminali')
+            .setDescription('Aşağıdaki butona tıklayarak gönderilecek mesajı ve detayları ayarlayın.')
+            .setFooter({ text: 'Sadece yetkili kullanımı içindir.' });
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('copy_btn')
-                .setLabel('.gg/json')
-                .setStyle(ButtonStyle.Danger)
+                .setCustomId('spam_ayar_ac')
+                .setLabel('Mesajı Ayarla')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('✉️')
         );
 
         await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
-        // BUTON VE MODAL YÖNETİMİ
-        const filter = i => i.user.id === interaction.user.id;
+        // Modal (Form) Dinleyici
+        const filter = i => i.customId === 'spam_ayar_ac';
         const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
 
         collector.on('collect', async i => {
-            if (i.customId === 'copy_btn') {
-                const modal = new ModalBuilder()
-                    .setCustomId('spam_modal')
-                    .setTitle('Klonlama & Spam Bilgileri');
+            const modal = new ModalBuilder()
+                .setCustomId('mesaj_modal')
+                .setTitle('Spam Mesajı Ayarları');
 
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder().setCustomId('s_token').setLabel('Self Token').setStyle(TextInputStyle.Short).setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder().setCustomId('s_id').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder().setCustomId('t_id').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)
-                    )
-                );
-                await i.showModal(modal);
-            }
+            const msgInput = new TextInputBuilder()
+                .setCustomId('spam_text')
+                .setLabel('Gönderilecek Mesaj')
+                .setPlaceholder('Örn: discord.gg/base64 veya sadece 1')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            const countInput = new TextInputBuilder()
+                .setCustomId('spam_count')
+                .setLabel('Kanal Başına Kaç Mesaj?')
+                .setPlaceholder('Örn: 1 (Çok yüksek girmeyin, ban sebebi)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(msgInput),
+                new ActionRowBuilder().addComponents(countInput)
+            );
+
+            await i.showModal(modal);
         });
-    }
+    },
 };
