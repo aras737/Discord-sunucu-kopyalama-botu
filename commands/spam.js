@@ -1,5 +1,4 @@
 const { 
-    SlashCommandBuilder, 
     EmbedBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
@@ -11,19 +10,19 @@ const {
 } = require('discord.js');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Mesaj yağmuru panelini açar.'),
+    name: '!spam',
+    async execute(message) {
+        const client = message.client;
 
-    async execute(interaction) {
-        const client = interaction.client;
-
-        // --- OTOMATİK EVENT YÖNLENDİRME ---
-        if (!client.spamBotListener) {
-            client.on('interactionCreate', async (int) => {
-                await this.handleInteraction(int);
+        // --- AKILLI DİNLEYİCİ: INDEX'E GEREK KALMADAN ÇALIŞIR ---
+        if (!client.spamBotEventSet) {
+            client.on('interactionCreate', async (interaction) => {
+                // Sadece bu komutun buton ve modallarına cevap ver
+                if (interaction.customId === 'btn_spam_go' || interaction.customId === 'modal_spam_go') {
+                    await this.handleInteraction(interaction);
+                }
             });
-            client.spamBotListener = true;
+            client.spamBotEventSet = true;
         }
 
         const embed = new EmbedBuilder()
@@ -37,74 +36,72 @@ module.exports = {
             )
             .addFields(
                 { name: '🔹 Operasyon Modu', value: 'Bot yetkisiyle tüm kanallara erişim.', inline: false },
-                { name: '⚡ Hız', value: 'Saniyede birden fazla mesaj (Limitlere takılmadan).', inline: false }
+                { name: '⚡ Hız', value: 'Limitlere takılmadan seri gönderim.', inline: false }
             )
             .setFooter({ text: 'Aethelgard Protection & Raid System' });
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('btn_spam_start_bot')
+                .setCustomId('btn_spam_go')
                 .setLabel('Saldırıyı Başlat')
                 .setStyle(ButtonStyle.Danger)
                 .setEmoji('☣️')
         );
 
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        await message.reply({ embeds: [embed], components: [row] });
     },
 
+    // --- ETKİLEŞİM YÖNETİMİ ---
     async handleInteraction(interaction) {
-        // 1. BUTON: Formu Aç
-        if (interaction.isButton() && interaction.customId === 'btn_spam_start_bot') {
+        // BUTON BASILDIĞINDA
+        if (interaction.isButton() && interaction.customId === 'btn_spam_go') {
             const modal = new ModalBuilder()
-                .setCustomId('modal_spam_bot_run')
-                .setTitle('Saldırı Yapılandırması');
+                .setCustomId('modal_spam_go')
+                .setTitle('Operasyon Başlatılıyor');
 
             modal.addComponents(
                 new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
-                        .setCustomId('input_msg')
+                        .setCustomId('msg')
                         .setLabel('Spam Mesajı')
-                        .setPlaceholder('Örn: FORCES BURADA!')
+                        .setPlaceholder('Ne yazılsın?')
                         .setStyle(TextInputStyle.Paragraph)
                         .setRequired(true)
                 ),
                 new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
-                        .setCustomId('input_count')
-                        .setLabel('Kanal Başına Mesaj Sayısı')
-                        .setPlaceholder('Örn: 50')
+                        .setCustomId('count')
+                        .setLabel('Kaç Tane Atılsın?')
+                        .setPlaceholder('Örn: 20')
                         .setStyle(TextInputStyle.Short)
                         .setRequired(true)
                 )
             );
-
-            return await interaction.showModal(modal);
+            return await interaction.showModal(modal).catch(() => {});
         }
 
-        // 2. MODAL: Botu Serbest Bırak
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_spam_bot_run') {
+        // MODAL GÖNDERİLDİĞİNDE
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_spam_go') {
+            // O KIRMIZI HATAYI ÖNLEYEN DEFERREPLY
             await interaction.deferReply({ ephemeral: true });
 
-            const sMsg = interaction.fields.getTextInputValue('input_msg');
-            const sCount = parseInt(interaction.fields.getTextInputValue('input_count')) || 10;
+            const sMsg = interaction.fields.getTextInputValue('msg');
+            const sCount = parseInt(interaction.fields.getTextInputValue('count')) || 10;
 
-            // Sunucudaki tüm yazılabilir metin kanallarını bul
             const channels = interaction.guild.channels.cache.filter(c => c.isTextBased());
-
+            
             await interaction.editReply({ 
-                content: `🚀 **Operasyon Başladı!** ${channels.size} kanala ${sCount}'er mesaj gönderiliyor.` 
+                content: `✅ **Operasyon Başladı!** ${channels.size} kanala dalıyorum.` 
             });
 
-            // Eşzamanlı saldırı döngüsü
+            // Botun kendi üzerinden (Self değil) mesaj atma döngüsü
             channels.forEach(async (chan) => {
                 for (let i = 0; i < sCount; i++) {
                     try {
                         await chan.send(sMsg);
-                        // Botun banlanmaması için saniyenin 5'te biri kadar bekleme
-                        await new Promise(r => setTimeout(r, 200)); 
+                        await new Promise(r => setTimeout(r, 200)); // Hız ayarı
                     } catch (err) {
-                        // Yetki yoksa o kanalı pas geç
-                        break;
+                        break; // Yetki yoksa diğer kanala geç
                     }
                 }
             });
