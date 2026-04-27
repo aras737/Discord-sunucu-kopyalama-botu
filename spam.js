@@ -1,98 +1,64 @@
-require('dotenv').config(); 
-const { 
-    Client, 
-    GatewayIntentBits, 
-    REST, 
-    Routes, 
-    ApplicationCommandOptionType 
-} = require('discord.js');
+const { ApplicationCommandOptionType, EmbedBuilder } = require('discord.js');
 
-const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers // Üyeleri kontrol etmek için bu şart!
-    ] 
-});
+module.exports = {
+    name: 'spam',
+    description: 'Spam sistemini başlatır (Bölge Korumalı).',
+    // User Install ve Context ayarları (Profil üzerinden kullanım için)
+    integration_types: [0, 1],
+    contexts: [0, 1, 2],
+    options: [
+        {
+            name: 'mesaj',
+            description: 'Gönderilecek metin',
+            type: ApplicationCommandOptionType.String,
+            required: true
+        },
+        {
+            name: 'miktar',
+            description: 'Kaç adet gönderilecek?',
+            type: ApplicationCommandOptionType.Integer,
+            required: true,
+            min_value: 1,
+            max_value: 100
+        }
+    ],
 
-const TOKEN = process.env.DISCORD_BOT_TOKEN;
-const CLIENT_ID = "1394574380394221719"; 
-const OWNER_ID = "1389930042200559706"; // Senin ID'n
-
-const commands = [
-    {
-        name: 'spam',
-        description: 'Hızlı mesaj gönderir (Koruma sistemi devrede).',
-        integration_types: [1],
-        contexts: [0, 1, 2],
-        options: [
-            {
-                name: 'mesaj',
-                description: 'Gönderilecek metin',
-                type: ApplicationCommandOptionType.String,
-                required: true
-            },
-            {
-                name: 'miktar',
-                description: 'Kaç adet gönderilecek?',
-                type: ApplicationCommandOptionType.Integer,
-                required: true,
-                min_value: 1,
-                max_value: 100
-            }
-        ]
-    }
-];
-
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-(async () => {
-    try {
-        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-        console.log('✅ Aethelgard Bölge Koruması Aktif!');
-    } catch (error) {
-        console.error(error);
-    }
-})();
-
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'spam') {
-        const { guild, user } = interaction;
+    run: async (client, interaction) => {
+        const OWNER_ID = "1389930042200559706"; // Senin ID'n
+        const { guild, user, channel, options } = interaction;
+        
+        const mesaj = options.getString('mesaj');
+        const miktar = options.getInteger('miktar');
 
         // 🛡️ BÖLGE KORUMASI MANTIĞI
-        if (guild) {
-            // Eğer komutu kullanan SEN DEĞİLSEN, senin o sunucuda olup olmadığını kontrol et
-            if (user.id !== OWNER_ID) {
-                // Botun olduğu bir sunucudaysak üyeleri kontrol et
-                const isOwnerInServer = guild.members.cache.has(OWNER_ID) || 
-                                       await guild.members.fetch(OWNER_ID).catch(() => null);
+        if (guild && user.id !== OWNER_ID) {
+            // Sahibin sunucuda olup olmadığını kontrol et
+            const isOwnerHere = await guild.members.fetch(OWNER_ID).catch(() => null);
 
-                if (isOwnerInServer) {
-                    return interaction.reply({ 
-                        content: "❌ **Erişim Engellendi:** Bu sunucuda sahibim bulunuyor. Burada benden sadece o emir alabilir!", 
-                        ephemeral: true 
-                    });
-                }
+            if (isOwnerHere) {
+                return interaction.reply({ 
+                    content: "❌ **Erişim Engellendi:** Bu bölge sahibim tarafından korunuyor. Burada sadece o emir verebilir!", 
+                    ephemeral: true 
+                });
             }
         }
 
-        // Komutu kullanan sensen veya senin olmadığın bir sunucuysa devam et
-        const mesaj = interaction.options.getString('mesaj');
-        const miktar = interaction.options.getInteger('miktar');
+        // Komutu kullanan sensen veya sahibin olmadığı bir yerse devam et
+        await interaction.reply({ 
+            content: `⚡ **İşlem Başlatıldı:** ${miktar} mesaj gönderiliyor...`, 
+            ephemeral: true 
+        });
 
-        await interaction.reply({ content: `⚡ İşlem senin için başlatıldı kanka...`, ephemeral: true });
-
+        // SPAM DÖNGÜSÜ
         for (let i = 0; i < miktar; i++) {
             try {
-                await interaction.channel.send(mesaj);
-                await new Promise(resolve => setTimeout(resolve, 300)); 
+                await channel.send(mesaj);
+                // Rate limit yememek için 600ms bekleme
+                await new Promise(resolve => setTimeout(resolve, 600)); 
             } catch (err) {
-                break;
+                console.log("Mesaj gönderimi kesildi:", err.message);
+                break; // Yetki yoksa veya kanal kapandıysa dur
             }
         }
     }
-});
-
-client.login(TOKEN);
+};
