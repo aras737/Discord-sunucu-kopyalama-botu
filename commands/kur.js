@@ -11,12 +11,12 @@ const {
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
 module.exports = {
-    name: '!kur',
+    name: 'kur', // !kur şeklinde çalışması için index'teki komut işleyicisine bağlıdır
     async execute(message) {
         const OWNER_ID = "1389930042200559706";
         if (message.author.id !== OWNER_ID) return;
 
-        // Interaction dinleyicisini bir kez tanımlıyoruz
+        // Interaction (Buton/Modal) dinleyicisini kuruyoruz
         const client = message.client;
         if (!client.fullCopyListenerSet) {
             client.on('interactionCreate', async (int) => {
@@ -29,21 +29,22 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
-            .setAuthor({ name: 'FORCES Ultra Cloner v2026' })
-            .setTitle('👑 Tam Teşekküllü Sunucu Kopyalama')
+            .setAuthor({ name: 'FORCES Ultra Cloner | Raporlama Sistemi' })
+            .setTitle('👑 Sunucu Kopyalama Başlatılsın mı?')
             .setDescription(
-                `Bu komut şu işlemleri sırasıyla gerçekleştirir:\n\n` +
-                `🖼️ **Kimlik:** Sunucu ismi ve ikonunu kopyalar.\n` +
-                `🧹 **Temizlik:** Hedefteki tüm kanal ve kategorileri siler.\n` +
-                `🏗️ **İnşa:** Kategorileri ve içindeki kanalları sırasıyla kurar.\n` +
-                `📩 **Rapor:** Her adımda sana DM üzerinden bilgi verir.`
+                `Bu işlem sırasında şu adımlar izlenecek:\n\n` +
+                `1️⃣ **Kimlik Aktarımı:** İsim ve ikon kopyalanır.\n` +
+                `2️⃣ **Saha Temizliği:** Hedefteki eski kanallar silinir.\n` +
+                `3️⃣ **Mimari İnşa:** Kategori ve kanallar sırayla dizilir.\n` +
+                `4️⃣ **Anlık Rapor:** Her adımda DM üzerinden bilgi verilir.\n\n` +
+                `**Hız:** 1.2sn / İşlem (Güvenli Mod)`
             )
-            .setFooter({ text: 'İşlemi başlatmak için butona tıklayın.' });
+            .setFooter({ text: 'Onaylamak için aşağıdaki butona tıkla.' });
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('btn_ultra_copy')
-                .setLabel('Ultra Klonlamayı Başlat')
+                .setLabel('Kopyalamayı Başlat')
                 .setStyle(ButtonStyle.Success)
         );
 
@@ -53,16 +54,16 @@ module.exports = {
     async handleInteraction(interaction) {
         // Modal Formunu Göster
         if (interaction.isButton() && interaction.customId === 'btn_ultra_copy') {
-            const modal = new ModalBuilder().setCustomId('modal_ultra_copy').setTitle('Ultra Klonlama Bilgileri');
+            const modal = new ModalBuilder().setCustomId('modal_ultra_copy').setTitle('Ultra Klonlama Formu');
             modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kullanıcı Tokenin').setStyle(TextInputStyle.Short).setPlaceholder('Hesap Tokenini Yaz').setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
             );
             return await interaction.showModal(modal);
         }
 
-        // Modal Formu Gönderildiğinde İşlemi Başlat
+        // Modal Formu Onaylandığında
         if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_ultra_copy') {
             await interaction.deferReply({ ephemeral: true });
 
@@ -71,7 +72,7 @@ module.exports = {
             const trgId = interaction.fields.getTextInputValue('h');
 
             const self = new SelfClient({ checkUpdate: false });
-            const owner = interaction.user; // DM atılacak kişi
+            const owner = interaction.user;
 
             self.on('ready', async () => {
                 try {
@@ -79,27 +80,28 @@ module.exports = {
                     const trg = self.guilds.cache.get(trgId);
 
                     if (!src || !trg) {
-                        await owner.send("❌ **Hata:** Sunucular bulunamadı. Tokenin her iki sunucuda olduğundan emin ol.");
+                        await owner.send("❌ **Hata:** Sunuculara erişilemedi. Tokenin her iki sunucuda da olduğundan emin ol.");
                         return self.destroy();
                     }
 
-                    await owner.send(`🚀 **Klonlama Başladı!**\n**Kaynak:** ${src.name}\n**Hedef:** ${trg.name}\n----------------------------`);
+                    // --- RAPORLAMA VE İŞLEM BAŞLANGICI ---
+                    await owner.send(`🚀 **Klonlama İşlemi Tetiklendi!**\n📦 **Kaynak:** ${src.name}\n🎯 **Hedef:** ${trg.name}\n----------------------------`);
 
-                    // --- 1. KİMLİK KOPYALAMA ---
+                    // ADIM 1: Kimlik
                     await trg.setName(src.name).catch(() => {});
                     if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
-                    await owner.send("🖼️ **1. Adım:** Sunucu adı ve ikonu başarıyla güncellendi.");
+                    await owner.send("🖼️ **Adım 1/3 Tamam:** Sunucu kimliği (isim/ikon) başarıyla kopyalandı.");
 
-                    // --- 2. TEMİZLİK ---
-                    await owner.send("🧹 **2. Adım:** Hedef sunucudaki eski kanallar temizleniyor...");
-                    const channelsToDel = await trg.channels.fetch();
-                    for (const c of channelsToDel.values()) {
+                    // ADIM 2: Temizlik
+                    await owner.send("🧹 **Adım 2/3:** Hedef sunucu temizleniyor...");
+                    const currentChans = await trg.channels.fetch();
+                    for (const c of currentChans.values()) {
                         await c.delete().catch(() => {});
                         await new Promise(r => setTimeout(r, 800));
                     }
 
-                    // --- 3. KATEGORİ VE KANAL İNŞASI ---
-                    await owner.send("🏗️ **3. Adım:** Kanal ve kategoriler orijinal sırasıyla kuruluyor...");
+                    // ADIM 3: İnşa
+                    await owner.send("🏗️ **Adım 3/3:** Mimari yapı (Kategori ve Kanallar) inşa ediliyor...");
                     const srcChans = src.channels.cache.sort((a, b) => a.position - b.position);
                     const categories = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
 
@@ -118,16 +120,16 @@ module.exports = {
                         }
                     }
 
-                    await owner.send("✅ **İŞLEM TAMAMLANDI:** Sunucu başarıyla kopyalandı.");
-                    await interaction.editReply('✅ İşlem bitti! Detaylar DM kutuna gönderildi.');
+                    await owner.send(`✅ **İŞLEM BAŞARIYLA BİTTİ!**\nSunucu artık orijinalinin ikizi oldu.`);
+                    await interaction.editReply('✅ İşlem tamam! DM kutunu kontrol et.');
                     self.destroy();
                 } catch (err) {
-                    await owner.send(`❌ **Kritik Hata:** ${err.message}`);
+                    await owner.send(`❌ **Hata Oluştu:** ${err.message}`);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply('❌ Token geçersiz kanka.'));
+            self.login(token).catch(() => interaction.editReply('❌ Girdiğin token hatalı!'));
         }
     }
 };
