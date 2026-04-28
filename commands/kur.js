@@ -11,65 +11,74 @@ const {
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
 module.exports = {
-    name: 'kur', // !kur şeklinde çalışması için index'teki komut işleyicisine bağlıdır
+    name: '!kur',
     async execute(message) {
         const OWNER_ID = "1389930042200559706";
-        if (message.author.id !== OWNER_ID) return;
-
-        // Interaction (Buton/Modal) dinleyicisini kuruyoruz
         const client = message.client;
-        if (!client.fullCopyListenerSet) {
-            client.on('interactionCreate', async (int) => {
-                if (int.customId === 'btn_ultra_copy' || int.customId === 'modal_ultra_copy') {
-                    await this.handleInteraction(int);
+        const args = message.content.split(' ').slice(1);
+
+        // --- EVENT LISTENER (Kendi içinde döner) ---
+        if (!client.kurListenerSet) {
+            client.on('interactionCreate', async (interaction) => {
+                if (interaction.customId === 'btn_ultra_copy' || interaction.customId === 'modal_ultra_copy') {
+                    await this.handleInteraction(interaction);
                 }
             });
-            client.fullCopyListenerSet = true;
+            client.kurListenerSet = true;
         }
 
-        const embed = new EmbedBuilder()
-            .setColor('#2b2d31')
-            .setAuthor({ name: 'FORCES Ultra Cloner | Raporlama Sistemi' })
-            .setTitle('👑 Sunucu Kopyalama Başlatılsın mı?')
-            .setDescription(
-                `Bu işlem sırasında şu adımlar izlenecek:\n\n` +
-                `1️⃣ **Kimlik Aktarımı:** İsim ve ikon kopyalanır.\n` +
-                `2️⃣ **Saha Temizliği:** Hedefteki eski kanallar silinir.\n` +
-                `3️⃣ **Mimari İnşa:** Kategori ve kanallar sırayla dizilir.\n` +
-                `4️⃣ **Anlık Rapor:** Her adımda DM üzerinden bilgi verilir.\n\n` +
-                `**Hız:** 1.2sn / İşlem (Güvenli Mod)`
-            )
-            .setFooter({ text: 'Onaylamak için aşağıdaki butona tıkla.' });
+        // --- PANEL KOMUDU (!kur panel) ---
+        if (args[0] === 'panel') {
+            if (message.author.id !== OWNER_ID) return;
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('btn_ultra_copy')
-                .setLabel('Kopyalamayı Başlat')
-                .setStyle(ButtonStyle.Success)
-        );
+            const embed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setAuthor({ name: 'FORCES Ultra Cloner v2026', iconURL: client.user.displayAvatarURL() })
+                .setTitle('👑 Sunucu Klonlama Sistemi')
+                .setDescription(
+                    `Bu işlem hedef sunucuyu tamamen temizler ve kaynak sunucuyu oraya inşa eder.\n\n` +
+                    `▫️ **Kimlik:** Sunucu adı ve ikonu kopyalanır.\n` +
+                    `▫️ **Düzen:** Kategoriler ve kanallar sırasıyla kurulur.\n` +
+                    `▫️ **İzinler:** Kanal yetkileri (overwrites) taşınır.\n\n` +
+                    `📩 **Bilgi:** Her adımda size DM üzerinden rapor verilir.`
+                )
+                .setFooter({ text: 'İşlemi başlatmak için aşağıdaki butona tıklayın.' });
 
-        await message.reply({ embeds: [embed], components: [row] });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_ultra_copy')
+                    .setLabel('Kopyalamayı Başlat')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('⚙️')
+            );
+
+            await message.channel.send({ embeds: [embed], components: [row] });
+            return message.delete().catch(() => {});
+        }
     },
 
     async handleInteraction(interaction) {
-        // Modal Formunu Göster
+        // 1. BUTON -> MODAL AÇMA
         if (interaction.isButton() && interaction.customId === 'btn_ultra_copy') {
-            const modal = new ModalBuilder().setCustomId('modal_ultra_copy').setTitle('Ultra Klonlama Formu');
+            const modal = new ModalBuilder()
+                .setCustomId('modal_ultra_copy')
+                .setTitle('FORCES Klonlama Formu');
+
             modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kendi Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
             );
             return await interaction.showModal(modal);
         }
 
-        // Modal Formu Onaylandığında
+        // 2. MODAL -> İŞLEMİ BAŞLATMA
         if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_ultra_copy') {
             await interaction.deferReply({ ephemeral: true });
 
-            const token = interaction.fields.getTextInputValue('t');
-            const srcId = interaction.fields.getTextInputValue('s');
-            const trgId = interaction.fields.getTextInputValue('h');
+            const token = interaction.fields.getTextInputValue('t').trim();
+            const srcId = interaction.fields.getTextInputValue('s').trim();
+            const trgId = interaction.fields.getTextInputValue('h').trim();
 
             const self = new SelfClient({ checkUpdate: false });
             const owner = interaction.user;
@@ -80,56 +89,52 @@ module.exports = {
                     const trg = self.guilds.cache.get(trgId);
 
                     if (!src || !trg) {
-                        await owner.send("❌ **Hata:** Sunuculara erişilemedi. Tokenin her iki sunucuda da olduğundan emin ol.");
+                        await owner.send("❌ **Hata:** Sunucular bulunamadı! Tokenin her iki sunucuda da olduğundan emin ol.");
                         return self.destroy();
                     }
 
-                    // --- RAPORLAMA VE İŞLEM BAŞLANGICI ---
-                    await owner.send(`🚀 **Klonlama İşlemi Tetiklendi!**\n📦 **Kaynak:** ${src.name}\n🎯 **Hedef:** ${trg.name}\n----------------------------`);
+                    await owner.send(`🚀 **Klonlama Başladı!**\n**Kaynak:** ${src.name}\n**Hedef:** ${trg.name}`);
 
-                    // ADIM 1: Kimlik
+                    // KİMLİK
                     await trg.setName(src.name).catch(() => {});
-                    if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
-                    await owner.send("🖼️ **Adım 1/3 Tamam:** Sunucu kimliği (isim/ikon) başarıyla kopyalandı.");
+                    if (src.iconURL()) await trg.setIcon(src.iconURL()).catch(() => {});
+                    await owner.send("🖼️ **Adım 1:** İsim ve ikon güncellendi.");
 
-                    // ADIM 2: Temizlik
-                    await owner.send("🧹 **Adım 2/3:** Hedef sunucu temizleniyor...");
-                    const currentChans = await trg.channels.fetch();
-                    for (const c of currentChans.values()) {
+                    // TEMİZLİK
+                    await owner.send("🧹 **Adım 2:** Hedef sunucu temizleniyor...");
+                    const channels = await trg.channels.fetch();
+                    for (const c of channels.values()) {
                         await c.delete().catch(() => {});
-                        await new Promise(r => setTimeout(r, 800));
+                        await new Promise(r => setTimeout(r, 700));
                     }
 
-                    // ADIM 3: İnşa
-                    await owner.send("🏗️ **Adım 3/3:** Mimari yapı (Kategori ve Kanallar) inşa ediliyor...");
+                    // İNŞA
+                    await owner.send("🏗️ **Adım 3:** Kanallar ve kategoriler kuruluyor...");
                     const srcChans = src.channels.cache.sort((a, b) => a.position - b.position);
-                    const categories = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
+                    const cats = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
 
-                    for (const cat of categories.values()) {
+                    for (const cat of cats.values()) {
                         const newCat = await trg.channels.create(cat.name, { type: 4 }).catch(() => null);
                         if (newCat) {
                             const children = srcChans.filter(c => c.parentId === cat.id);
                             for (const child of children.values()) {
                                 let type = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
-                                await trg.channels.create(child.name, { 
-                                    type: type, 
-                                    parent: newCat.id 
-                                }).catch(() => {});
-                                await new Promise(r => setTimeout(r, 1200)); // Rate limit koruması
+                                await trg.channels.create(child.name, { type: type, parent: newCat.id }).catch(() => {});
+                                await new Promise(r => setTimeout(r, 1000));
                             }
                         }
                     }
 
-                    await owner.send(`✅ **İŞLEM BAŞARIYLA BİTTİ!**\nSunucu artık orijinalinin ikizi oldu.`);
-                    await interaction.editReply('✅ İşlem tamam! DM kutunu kontrol et.');
+                    await owner.send(`✅ **İŞLEM TAMAMLANDI!**\n${src.name} başarıyla kopyalandı.`);
+                    await interaction.editReply('İşlem başarıyla bitti, DM kutunu kontrol et kanka!');
                     self.destroy();
                 } catch (err) {
-                    await owner.send(`❌ **Hata Oluştu:** ${err.message}`);
+                    await owner.send(`❌ **Kritik Hata:** ${err.message}`);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply('❌ Girdiğin token hatalı!'));
+            self.login(token).catch(() => interaction.editReply('❌ Token hatalı kanka.'));
         }
     }
 };
