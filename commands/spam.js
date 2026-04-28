@@ -1,42 +1,53 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
-    // Slash komutu tanımlaması
+    // Slash Komutu Tanımlama
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Woodhook Mesaj Yağmuru (1 saniye gecikmeli)')
-        .addStringOption(opt => 
-            opt.setName('mesaj')
-                .setDescription('Gönderilecek mesaj içeriği')
+        .setDescription('Woodhook Style: Kanala mesaj yağmuru başlatır.')
+        .addStringOption(option => 
+            option.setName('mesaj')
+                .setDescription('Gönderilecek metin')
                 .setRequired(true))
-        .addIntegerOption(opt => 
-            opt.setName('miktar')
-                .setDescription('Toplam kaç adet gönderilsin?')
+        .addIntegerOption(option => 
+            option.setName('miktar')
+                .setDescription('Gönderilecek mesaj sayısı')
                 .setRequired(true)),
 
     async execute(interaction) {
-        // Sadece senin ID'n kullanabilsin
+        // --- GÜVENLİK KONTROLÜ ---
         const OWNER_ID = "1389930042200559706";
         if (interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: "❌ Bu komutu kullanmaya yetkiniz yok!", ephemeral: true });
+            return interaction.reply({ 
+                content: '❌ **Erişim Engellendi:** Bu komut sadece proje sahibine özeldir.', 
+                ephemeral: true 
+            });
         }
 
-        const msg = interaction.options.getString('mesaj');
+        const text = interaction.options.getString('mesaj');
         const count = interaction.options.getInteger('miktar');
 
-        // Kullanıcıya işlemin başladığını gizli mesajla bildir
-        await interaction.reply({ content: `🚀 **${count}** adet mesaj gönderimi başlatıldı.`, ephemeral: true });
+        // Kullanıcıya bilgi ver (Sadece sen görürsün)
+        await interaction.reply({ 
+            content: `🚀 **İşlem Başladı:** "${text}" mesajı ${count} kez gönderiliyor...`, 
+            ephemeral: true 
+            });
 
-        // Spam döngüsü
+        // --- SPAM DÖNGÜSÜ ---
         for (let i = 0; i < count; i++) {
             try {
-                await interaction.channel.send(msg);
-                // Woodhook tarzı 1 saniye bekleme (Rate limit yememek için)
-                await new Promise(r => setTimeout(r, 1000)); 
+                // Kanalda mesajı gönder
+                await interaction.channel.send(text);
+
+                // --- 1 SANİYE GECİKME (WOODHOOK STANDARTI) ---
+                // Bu kısım botun Discord tarafından banlanmasını veya rate-limit yemesini engeller.
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
             } catch (error) {
-                console.error("Mesaj gönderilemedi:", error);
-                break; // Hata durumunda döngüyü durdur
+                // Eğer kanal silinirse veya yetki alınırsa döngüyü durdur
+                console.error("Spam durduruldu veya bir hata oluştu:", error.message);
+                break;
             }
         }
-    }
+    },
 };
