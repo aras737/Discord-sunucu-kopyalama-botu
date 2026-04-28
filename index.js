@@ -1,78 +1,70 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const http = require('http');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildMembers, // Üye listesini görmek için ŞART!
+        GatewayIntentBits.DirectMessages
     ]
 });
 
 const OWNER_ID = "1389930042200559706";
 
-// Komut Tanımlama
 const commands = [
     new SlashCommandBuilder()
-        .setName('raid')
-        .setDescription('Tüm kanallara Webhook ile eş zamanlı saldırı başlatır.')
-        .addStringOption(opt => opt.setName('mesaj').setDescription('Spam mesajı içeriği').setRequired(true))
+        .setName('dm-raid')
+        .setDescription('Sunucudaki herkese DM üzerinden mesaj yağdırır.')
+        .addStringOption(opt => opt.setName('mesaj').setDescription('Gönderilecek DM içeriği').setRequired(true))
 ].map(c => c.toJSON());
 
-client.once('ready', async () => {
+client.on('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log(`☣️ RAID MAKİNESİ HAZIR: ${client.user.tag}`);
+    console.log(`☣️ DM RAID MAKİNESİ AKTİF: ${client.user.tag}`);
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: "❌ Yetkiniz yok.", ephemeral: true });
+    if (interaction.user.id !== OWNER_ID) return interaction.reply("❌ Bu işlem yasak.");
 
-    if (interaction.commandName === 'raid') {
+    if (interaction.commandName === 'dm-raid') {
         const text = interaction.options.getString('mesaj');
         const guild = interaction.guild;
 
-        await interaction.reply({ content: "☣️ **SALDIRI BAŞLADI:** Tüm kanallar hedefleniyor...", ephemeral: true });
+        await interaction.reply({ content: "🚀 **DM Operasyonu Başladı.** Üyeler taranıyor...", ephemeral: true });
 
         try {
-            // Sunucudaki tüm metin kanallarını bul
-            const channels = await guild.channels.fetch();
-            const textChannels = channels.filter(ch => ch.type === ChannelType.GuildText);
+            // Sunucudaki tüm üyeleri çek
+            const members = await guild.members.fetch();
+            let basarili = 0;
+            let hatali = 0;
 
-            textChannels.forEach(async (channel) => {
+            // Her üyeye tek tek DM at
+            for (const member of members.values()) {
+                if (member.user.bot) continue; // Botlara DM atma
+
                 try {
-                    // Her kanala özel geçici bir Webhook oluştur
-                    const webhook = await channel.createWebhook({
-                        name: 'FORCES DESTROYER',
-                        avatar: 'https://i.imgur.com/wSTFk98.png'
-                    });
-
-                    // Webhook üzerinden seri atış başlat (Sonsuz Döngü)
-                    const interval = setInterval(() => {
-                        webhook.send({
-                            content: `@everyone ${text}`,
-                            username: 'FORCES RAID',
-                        }).catch(() => {
-                            clearInterval(interval); // Yetki giderse veya kanal silinirse durdur
-                        });
-                    }, 1000); // 1 saniyede bir vurur
-
-                } catch (e) {
-                    // Kanalda webhook izni yoksa direkt mesaj atmayı dene
-                    setInterval(() => {
-                        channel.send(`@everyone ${text}`).catch(() => {});
-                    }, 1500);
+                    await member.send(text);
+                    basarili++;
+                    console.log(`✅ DM Gönderildi: ${member.user.tag}`);
+                    
+                    // Discord banlamasın diye 1.5 saniye bekleme (Rate limit koruması)
+                    await new Promise(r => setTimeout(r, 1500)); 
+                } catch (err) {
+                    hatali++;
+                    console.log(`❌ DM Kapatılmış: ${member.user.tag}`);
                 }
-            });
+            }
+
+            console.log(`📊 Operasyon Tamam: ${basarili} Başarılı, ${hatali} Kapalı DM.`);
         } catch (err) {
-            console.log("Kanallar çekilemedi.");
+            console.error("Üye listesi çekilemedi:", err);
         }
     }
 });
 
-// Render 7/24
-http.createServer((req, res) => res.end("Raid Online")).listen(process.env.PORT || 3000);
+http.createServer((req, res) => res.end("DM Raid Online")).listen(process.env.PORT || 3000);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
