@@ -16,6 +16,7 @@ module.exports = {
         const OWNER_ID = "1389930042200559706";
         if (message.author.id !== OWNER_ID) return;
 
+        // Interaction dinleyicisini bir kez tanımlıyoruz
         const client = message.client;
         if (!client.fullCopyListenerSet) {
             client.on('interactionCreate', async (int) => {
@@ -28,21 +29,21 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
-            .setAuthor({ name: 'FORCES Ultra Sunucu Kopyalayıcı' })
-            .setTitle('👑 Tam Teşekküllü Klonlama')
+            .setAuthor({ name: 'FORCES Ultra Cloner v2026' })
+            .setTitle('👑 Tam Teşekküllü Sunucu Kopyalama')
             .setDescription(
-                `Bu işlem şunları kapsar:\n\n` +
-                `🖼️ **Sunucu İsmi ve İkonu**\n` +
-                `🛡️ **Roller ve İzinleri**\n` +
-                `📁 **Kategoriler ve Kanallar**\n` +
-                `⚙️ **Kanal İzinleri (Permission Overwrites)**\n\n` +
-                `**Hız:** Her işlem arası 1 Saniye (Durma yapmaz).`
-            );
+                `Bu komut şu işlemleri sırasıyla gerçekleştirir:\n\n` +
+                `🖼️ **Kimlik:** Sunucu ismi ve ikonunu kopyalar.\n` +
+                `🧹 **Temizlik:** Hedefteki tüm kanal ve kategorileri siler.\n` +
+                `🏗️ **İnşa:** Kategorileri ve içindeki kanalları sırasıyla kurar.\n` +
+                `📩 **Rapor:** Her adımda sana DM üzerinden bilgi verir.`
+            )
+            .setFooter({ text: 'İşlemi başlatmak için butona tıklayın.' });
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('btn_ultra_copy')
-                .setLabel('Ultra Kopyalamayı Başlat')
+                .setLabel('Ultra Klonlamayı Başlat')
                 .setStyle(ButtonStyle.Success)
         );
 
@@ -50,16 +51,18 @@ module.exports = {
     },
 
     async handleInteraction(interaction) {
+        // Modal Formunu Göster
         if (interaction.isButton() && interaction.customId === 'btn_ultra_copy') {
             const modal = new ModalBuilder().setCustomId('modal_ultra_copy').setTitle('Ultra Klonlama Bilgileri');
             modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Token').setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kullanıcı Tokenin').setStyle(TextInputStyle.Short).setPlaceholder('Hesap Tokenini Yaz').setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
             );
             return await interaction.showModal(modal);
         }
 
+        // Modal Formu Gönderildiğinde İşlemi Başlat
         if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_ultra_copy') {
             await interaction.deferReply({ ephemeral: true });
 
@@ -68,96 +71,63 @@ module.exports = {
             const trgId = interaction.fields.getTextInputValue('h');
 
             const self = new SelfClient({ checkUpdate: false });
+            const owner = interaction.user; // DM atılacak kişi
 
             self.on('ready', async () => {
                 try {
                     const src = self.guilds.cache.get(srcId);
                     const trg = self.guilds.cache.get(trgId);
 
-                    if (!src || !trg) return interaction.editReply('❌ Sunucu bulunamadı! Hesabının her iki sunucuda da olması lazım.');
+                    if (!src || !trg) {
+                        await owner.send("❌ **Hata:** Sunucular bulunamadı. Tokenin her iki sunucuda olduğundan emin ol.");
+                        return self.destroy();
+                    }
 
-                    // --- 1. SUNUCU ADI VE İKONU KOPYALAMA ---
-                    await interaction.editReply('🖼️ Sunucu adı ve ikonu kopyalanıyor...');
+                    await owner.send(`🚀 **Klonlama Başladı!**\n**Kaynak:** ${src.name}\n**Hedef:** ${trg.name}\n----------------------------`);
+
+                    // --- 1. KİMLİK KOPYALAMA ---
                     await trg.setName(src.name).catch(() => {});
-                    if (src.iconURL()) {
-                        await trg.setIcon(src.iconURL({ dynamic: true, size: 1024 })).catch(() => {});
-                    }
-                    await new Promise(r => setTimeout(r, 1000));
+                    if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
+                    await owner.send("🖼️ **1. Adım:** Sunucu adı ve ikonu başarıyla güncellendi.");
 
-                    // --- 2. TEMİZLİK (KANALLAR) ---
-                    await interaction.editReply('🧹 Kanallar temizleniyor...');
-                    for (const c of trg.channels.cache.values()) {
+                    // --- 2. TEMİZLİK ---
+                    await owner.send("🧹 **2. Adım:** Hedef sunucudaki eski kanallar temizleniyor...");
+                    const channelsToDel = await trg.channels.fetch();
+                    for (const c of channelsToDel.values()) {
                         await c.delete().catch(() => {});
-                        await new Promise(r => setTimeout(r, 1000));
+                        await new Promise(r => setTimeout(r, 800));
                     }
 
-                    // --- 3. TEMİZLİK (ROLLER) ---
-                    await interaction.editReply('🧹 Roller temizleniyor...');
-                    const rolesToDel = trg.roles.cache.filter(r => r.name !== '@everyone' && !r.managed && r.editable);
-                    for (const role of rolesToDel.values()) {
-                        await role.delete().catch(() => {});
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
-
-                    // --- 4. ROLLERİ OLUŞTUR ---
-                    await interaction.editReply('🏗️ Roller inşa ediliyor...');
-                    const srcRoles = src.roles.cache.filter(r => r.name !== '@everyone' && !r.managed).sort((a, b) => a.position - b.position);
-                    for (const r of srcRoles.values()) {
-                        await trg.roles.create({
-                            name: r.name,
-                            color: r.color,
-                            permissions: r.permissions,
-                            hoist: r.hoist,
-                            mentionable: r.mentionable
-                        }).catch(() => {});
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
-
-                    // --- 5. KATEGORİ VE KANALLARI OLUŞTUR ---
-                    await interaction.editReply('🏗️ Kanallar ve izinler kopyalanıyor...');
+                    // --- 3. KATEGORİ VE KANAL İNŞASI ---
+                    await owner.send("🏗️ **3. Adım:** Kanal ve kategoriler orijinal sırasıyla kuruluyor...");
                     const srcChans = src.channels.cache.sort((a, b) => a.position - b.position);
-                    const cats = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
+                    const categories = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
 
-                    for (const cat of cats.values()) {
-                        const newCat = await trg.channels.create(cat.name, { 
-                            type: 4,
-                            permissionOverwrites: cat.permissionOverwrites.cache.map(p => ({
-                                id: p.id,
-                                allow: p.allow,
-                                deny: p.deny,
-                                type: p.type
-                            }))
-                        }).catch(() => null);
-                        await new Promise(r => setTimeout(r, 1000));
-
+                    for (const cat of categories.values()) {
+                        const newCat = await trg.channels.create(cat.name, { type: 4 }).catch(() => null);
                         if (newCat) {
                             const children = srcChans.filter(c => c.parentId === cat.id);
                             for (const child of children.values()) {
                                 let type = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
                                 await trg.channels.create(child.name, { 
                                     type: type, 
-                                    parent: newCat.id,
-                                    permissionOverwrites: child.permissionOverwrites.cache.map(p => ({
-                                        id: p.id,
-                                        allow: p.allow,
-                                        deny: p.deny,
-                                        type: p.type
-                                    }))
+                                    parent: newCat.id 
                                 }).catch(() => {});
-                                await new Promise(r => setTimeout(r, 1000));
+                                await new Promise(r => setTimeout(r, 1200)); // Rate limit koruması
                             }
                         }
                     }
 
-                    await interaction.editReply('✅ **FULL KLONLAMA BİTTİ!** Sunucu artık kaynak sunucunun ikiz kardeşi.');
+                    await owner.send("✅ **İŞLEM TAMAMLANDI:** Sunucu başarıyla kopyalandı.");
+                    await interaction.editReply('✅ İşlem bitti! Detaylar DM kutuna gönderildi.');
                     self.destroy();
                 } catch (err) {
-                    await interaction.editReply('❌ Hata: ' + err.message);
+                    await owner.send(`❌ **Kritik Hata:** ${err.message}`);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply('❌ Token geçersiz!'));
+            self.login(token).catch(() => interaction.editReply('❌ Token geçersiz kanka.'));
         }
     }
 };
