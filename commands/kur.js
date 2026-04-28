@@ -1,140 +1,131 @@
 const { 
-    EmbedBuilder, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle, 
-    InteractionType 
+    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
+    ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType, ChannelType 
 } = require('discord.js');
-const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
 module.exports = {
     name: '!kur',
     async execute(message) {
         const OWNER_ID = "1389930042200559706";
+        if (message.author.id !== OWNER_ID) return;
+
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setAuthor({ name: 'FORCES | Sunucu Klonlama', iconURL: message.client.user.displayAvatarURL() })
+            .setTitle('🚀 Kurulum Sihirbazı Hazır')
+            .setDescription(
+                `Bu işlem hedef sunucuyu tamamen temizleyip kaynak sunucunun **kanallarını, kategorilerini ve rollerini** kopyalar.\n\n` +
+                `**Uyarı:** Bu işlem geri alınamaz!`
+            )
+            .setFooter({ text: 'FORCES Development • Güvenli Klonlama Sistemi' });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('btn_clone_start')
+                .setLabel('Sihirbazı Başlat')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🛠️')
+        );
+
+        await message.reply({ embeds: [embed], components: [row] });
+
         const client = message.client;
-        const args = message.content.split(' ').slice(1);
+        if (client.kurListenerSet) return;
 
-        // --- EVENT LISTENER (Kendi içinde döner) ---
-        if (!client.kurListenerSet) {
-            client.on('interactionCreate', async (interaction) => {
-                if (interaction.customId === 'btn_ultra_copy' || interaction.customId === 'modal_ultra_copy') {
-                    await this.handleInteraction(interaction);
+        client.on('interactionCreate', async (int) => {
+            // Modal Açma
+            if (int.isButton() && int.customId === 'btn_clone_start') {
+                const modal = new ModalBuilder().setCustomId('modal_clone_config').setTitle('Klonlama Ayarları');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('src_id').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('trg_id').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
+                );
+                return await int.showModal(modal);
+            }
+
+            // İşlemi Başlatma
+            if (int.type === InteractionType.ModalSubmit && int.customId === 'modal_clone_config') {
+                await int.deferReply({ ephemeral: true });
+
+                const sourceGuild = client.guilds.cache.get(int.fields.getTextInputValue('src_id'));
+                const targetGuild = client.guilds.cache.get(int.fields.getTextInputValue('trg_id'));
+
+                if (!sourceGuild || !targetGuild) {
+                    return int.editReply('❌ Bot her iki sunucuda da yönetici yetkisine sahip olmalıdır.');
                 }
-            });
-            client.kurListenerSet = true;
-        }
 
-        // --- PANEL KOMUDU (!kur panel) ---
-        if (args[0] === 'panel') {
-            if (message.author.id !== OWNER_ID) return;
-
-            const embed = new EmbedBuilder()
-                .setColor('#2b2d31')
-                .setAuthor({ name: 'FORCES Ultra Cloner v2026', iconURL: client.user.displayAvatarURL() })
-                .setTitle('👑 Sunucu Klonlama Sistemi')
-                .setDescription(
-                    `Bu işlem hedef sunucuyu tamamen temizler ve kaynak sunucuyu oraya inşa eder.\n\n` +
-                    `▫️ **Kimlik:** Sunucu adı ve ikonu kopyalanır.\n` +
-                    `▫️ **Düzen:** Kategoriler ve kanallar sırasıyla kurulur.\n` +
-                    `▫️ **İzinler:** Kanal yetkileri (overwrites) taşınır.\n\n` +
-                    `📩 **Bilgi:** Her adımda size DM üzerinden rapor verilir.`
-                )
-                .setFooter({ text: 'İşlemi başlatmak için aşağıdaki butona tıklayın.' });
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('btn_ultra_copy')
-                    .setLabel('Kopyalamayı Başlat')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('⚙️')
-            );
-
-            await message.channel.send({ embeds: [embed], components: [row] });
-            return message.delete().catch(() => {});
-        }
-    },
-
-    async handleInteraction(interaction) {
-        // 1. BUTON -> MODAL AÇMA
-        if (interaction.isButton() && interaction.customId === 'btn_ultra_copy') {
-            const modal = new ModalBuilder()
-                .setCustomId('modal_ultra_copy')
-                .setTitle('FORCES Klonlama Formu');
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kendi Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
-            );
-            return await interaction.showModal(modal);
-        }
-
-        // 2. MODAL -> İŞLEMİ BAŞLATMA
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_ultra_copy') {
-            await interaction.deferReply({ ephemeral: true });
-
-            const token = interaction.fields.getTextInputValue('t').trim();
-            const srcId = interaction.fields.getTextInputValue('s').trim();
-            const trgId = interaction.fields.getTextInputValue('h').trim();
-
-            const self = new SelfClient({ checkUpdate: false });
-            const owner = interaction.user;
-
-            self.on('ready', async () => {
                 try {
-                    const src = self.guilds.cache.get(srcId);
-                    const trg = self.guilds.cache.get(trgId);
-
-                    if (!src || !trg) {
-                        await owner.send("❌ **Hata:** Sunucular bulunamadı! Tokenin her iki sunucuda da olduğundan emin ol.");
-                        return self.destroy();
+                    // 1. ADIM: Hedef Sunucuyu Temizle (Kanallar ve Roller)
+                    const targetChannels = await targetGuild.channels.fetch();
+                    for (const channel of targetChannels.values()) {
+                        await channel.delete().catch(() => {});
                     }
 
-                    await owner.send(`🚀 **Klonlama Başladı!**\n**Kaynak:** ${src.name}\n**Hedef:** ${trg.name}`);
-
-                    // KİMLİK
-                    await trg.setName(src.name).catch(() => {});
-                    if (src.iconURL()) await trg.setIcon(src.iconURL()).catch(() => {});
-                    await owner.send("🖼️ **Adım 1:** İsim ve ikon güncellendi.");
-
-                    // TEMİZLİK
-                    await owner.send("🧹 **Adım 2:** Hedef sunucu temizleniyor...");
-                    const channels = await trg.channels.fetch();
-                    for (const c of channels.values()) {
-                        await c.delete().catch(() => {});
-                        await new Promise(r => setTimeout(r, 700));
+                    // 2. ADIM: Rolleri Klonla (Opsiyonel ama izinler için gerekli)
+                    const roleMap = new Map();
+                    const sourceRoles = await sourceGuild.roles.fetch();
+                    
+                    // Önce rolleri oluştur ki kanal izinlerinde kullanabilelim
+                    for (const role of sourceRoles.values()) {
+                        if (role.managed || role.name === '@everyone') {
+                            roleMap.set(role.id, targetGuild.roles.everyone.id);
+                            continue;
+                        }
+                        const newRole = await targetGuild.roles.create({
+                            name: role.name,
+                            color: role.color,
+                            hoist: role.hoist,
+                            permissions: role.permissions,
+                            mentionable: role.mentionable
+                        }).catch(() => null);
+                        if (newRole) roleMap.set(role.id, newRole.id);
                     }
 
-                    // İNŞA
-                    await owner.send("🏗️ **Adım 3:** Kanallar ve kategoriler kuruluyor...");
-                    const srcChans = src.channels.cache.sort((a, b) => a.position - b.position);
-                    const cats = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
+                    // 3. ADIM: Kanalları Klonla
+                    const sourceChannels = await sourceGuild.channels.fetch();
+                    
+                    // Fonksiyon: İzinleri Yeni Rollere Göre Düzenle
+                    const getNewPermissions = (channel) => {
+                        return channel.permissionOverwrites.cache.map(p => ({
+                            id: roleMap.get(p.id) || p.id, // Eğer rol kopyalandıysa yeni ID'yi kullan
+                            allow: p.allow.toArray(),
+                            deny: p.deny.toArray()
+                        })).filter(p => targetGuild.roles.cache.has(p.id)); // Sadece var olan roller/üyeler için
+                    };
 
-                    for (const cat of cats.values()) {
-                        const newCat = await trg.channels.create(cat.name, { type: 4 }).catch(() => null);
-                        if (newCat) {
-                            const children = srcChans.filter(c => c.parentId === cat.id);
-                            for (const child of children.values()) {
-                                let type = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
-                                await trg.channels.create(child.name, { type: type, parent: newCat.id }).catch(() => {});
-                                await new Promise(r => setTimeout(r, 1000));
-                            }
+                    // Kategorileri Oluştur
+                    const categories = sourceChannels.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position);
+                    
+                    for (const cat of categories.values()) {
+                        const newCat = await targetGuild.channels.create({
+                            name: cat.name,
+                            type: ChannelType.GuildCategory,
+                            permissionOverwrites: getNewPermissions(cat)
+                        });
+
+                        const children = sourceChannels.filter(c => c.parentId === cat.id).sort((a, b) => a.position - b.position);
+                        for (const child of children.values()) {
+                            await targetGuild.channels.create({
+                                name: child.name,
+                                type: child.type,
+                                parent: newCat.id,
+                                topic: child.topic,
+                                nsfw: child.nsfw,
+                                rateLimitPerUser: child.rateLimitPerUser,
+                                permissionOverwrites: getNewPermissions(child)
+                            });
+                            await new Promise(r => setTimeout(r, 750)); // Rate limit koruması
                         }
                     }
 
-                    await owner.send(`✅ **İŞLEM TAMAMLANDI!**\n${src.name} başarıyla kopyalandı.`);
-                    await interaction.editReply('İşlem başarıyla bitti, DM kutunu kontrol et kanka!');
-                    self.destroy();
-                } catch (err) {
-                    await owner.send(`❌ **Kritik Hata:** ${err.message}`);
-                    self.destroy();
-                }
-            });
+                    await int.editReply({ content: '✅ **İşlem Tamamlandı!** Roller ve kanallar başarıyla senkronize edildi.' });
 
-            self.login(token).catch(() => interaction.editReply('❌ Token hatalı kanka.'));
-        }
+                } catch (error) {
+                    console.error("Klonlama Hatası:", error);
+                    await int.editReply({ content: '❌ Kritik bir hata oluştu. Konsolu kontrol et.' });
+                }
+            }
+        });
+        client.kurListenerSet = true;
     }
 };
