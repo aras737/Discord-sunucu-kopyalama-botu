@@ -11,20 +11,23 @@ const {
 
 module.exports = {
     name: '!sorgu',
-    async execute(message, args) {
-        const OWNER_ID = "1389930042200559706"; // Senin ID'n
+    async execute(message) {
+        const OWNER_ID = "1389930042200559706";
         const client = message.client;
+        const args = message.content.split(' ').slice(1); // Argümanları burada tanımlıyoruz
 
-        // --- SELF-EXECUTING EVENT LISTENER (YÖNLENDİRMEYİ İÇİNE GÖMDÜK) ---
-        // Bu kısım sayesinde buton ve modal işlemleri index.js'den bağımsız burada döner.
+        // --- EVENT LISTENER SİSTEMİ ---
         if (!client.sorguListenerSet) {
             client.on('interactionCreate', async (interaction) => {
-                await this.handleInteraction(interaction);
+                // Sadece bu komutla ilgili etkileşimleri işle
+                if (interaction.customId === 'user_sorgu_button' || interaction.customId === 'modal_sorgu_system') {
+                    await this.handleInteraction(interaction);
+                }
             });
-            client.sorguListenerSet = true; // Eventin birden fazla kez tanımlanmasını engeller
+            client.sorguListenerSet = true;
         }
 
-        // --- PANEL KURULUMU: Sadece sen '!sorgu panel' yazınca çalışır ---
+        // --- PANEL KOMUDU (!sorgu panel) ---
         if (args[0] === 'panel') {
             if (message.author.id !== OWNER_ID) return;
 
@@ -34,16 +37,15 @@ module.exports = {
                     name: '🆔 FORCES ID Sorgu Paneli 🕵️', 
                     iconURL: client.user.displayAvatarURL() 
                 })
-                .setTitle('Discord kullanıcı ID’si ile veri sorgulamak için en kolay yol!')
+                .setTitle('Discord Kullanıcı Sorgulama Sistemi')
                 .setDescription(
                     `▫️ **1.** Aşağıdaki **Sorgula** butonuna tıkla.\n` +
-                    `▫️ **2.** Açılan alana sorgulamak istediğin Discord ID'yi gir (örn: 123456789012345678).\n` +
-                    `▫️ **3.** Sonuçları sadece sana özel, detaylı embed mesaj olarak alırsın.\n\n` +
+                    `▫️ **2.** Açılan alana bir Kullanıcı ID yapıştır.\n` +
+                    `▫️ **3.** Sonuçları anında görüntüle.\n\n` +
                     `---\n` +
-                    `🛡️ Sorgu hem hızlı hem de gizlidir. Tüm analizler veritabanına erişerek yapılır!`
+                    `🛡️ Sorgu sonuçları sadece size özel (ephemeral) olarak gösterilir.`
                 )
-                .setImage('https://i.imgur.com/kSly8Z6.png') // Berk Forces Banner
-                .setFooter({ text: '⚡ MADE BY FORCES | Discord ID Paneli' });
+                .setFooter({ text: '⚡ MADE BY FORCES' });
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -58,10 +60,8 @@ module.exports = {
         }
     },
 
-    // --- ETKİLEŞİM YÖNETİCİSİ (Buton ve Modal İşlemleri) ---
     async handleInteraction(interaction) {
-        
-        // 1. BUTONA BASILDIĞINDA (MODAL AÇILIŞI)
+        // 1. BUTON MANTIĞI
         if (interaction.isButton() && interaction.customId === 'user_sorgu_button') {
             const modal = new ModalBuilder()
                 .setCustomId('modal_sorgu_system')
@@ -70,26 +70,26 @@ module.exports = {
             const idInput = new TextInputBuilder()
                 .setCustomId('sorgu_id_input')
                 .setLabel('Sorgulanacak ID')
-                .setPlaceholder('Buraya bir ID yapıştır...')
+                .setPlaceholder('Örn: 1389930042200559706')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true)
-                .setMinLength(15)
-                .setMaxLength(21);
+                .setMinLength(17)
+                .setMaxLength(20);
 
             modal.addComponents(new ActionRowBuilder().addComponents(idInput));
-            return await interaction.showModal(modal).catch(() => {});
+            return await interaction.showModal(modal);
         }
 
-        // 2. MODAL GÖNDERİLDİĞİNDE (BİLGİLERİ DÖKME)
+        // 2. MODAL MANTIĞI
         if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_sorgu_system') {
-            
-            // "Etkileşim Başarısız" hatasını önlemek için deferReply
+            // "Etkileşim Başarısız" hatasını önlemek için hemen cevap veriyoruz
             await interaction.deferReply({ ephemeral: true });
 
-            const targetId = interaction.fields.getTextInputValue('sorgu_id_input');
+            const targetId = interaction.fields.getTextInputValue('sorgu_id_input').trim();
 
             try {
                 const user = await interaction.client.users.fetch(targetId);
+                const fullUser = await user.fetch(); // Banner için tam veri
                 
                 const resultEmbed = new EmbedBuilder()
                     .setColor('#5865F2')
@@ -101,11 +101,9 @@ module.exports = {
                         { name: '📅 Hesap Kuruluş', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:D> (<t:${Math.floor(user.createdTimestamp / 1000)}:R>)`, inline: false },
                         { name: '🤖 Durum', value: user.bot ? '✅ Bot Hesabı' : '👤 Gerçek Kullanıcı', inline: true }
                     )
-                    .setFooter({ text: `Sorgulayan: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+                    .setFooter({ text: `Sorgulayan: ${interaction.user.tag}` })
                     .setTimestamp();
 
-                // Kullanıcının banner'ını çekmek için tam veriyi al
-                const fullUser = await user.fetch();
                 if (fullUser.banner) {
                     resultEmbed.setImage(fullUser.bannerURL({ dynamic: true, size: 1024 }));
                 }
@@ -113,7 +111,7 @@ module.exports = {
                 await interaction.editReply({ embeds: [resultEmbed] });
 
             } catch (err) {
-                await interaction.editReply({ content: '❌ **Hata:** Geçersiz bir ID girdiniz veya kullanıcı bulunamadı!' });
+                await interaction.editReply({ content: '❌ **Hata:** Kullanıcı bulunamadı! Lütfen ID\'nin doğruluğundan emin olun.' });
             }
         }
     }
