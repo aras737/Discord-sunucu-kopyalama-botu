@@ -9,12 +9,13 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const http = require('http'); // Render için eklendi
 
 // --- AYARLAR ---
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CLIENT_ID = '1394574380394221719';
 const OWNER_ID = "1389930042200559706";
-const PREFIX = '!'; // !kur gibi komutlar için
+const PREFIX = '!'; 
 
 const client = new Client({
     intents: [
@@ -29,7 +30,7 @@ const client = new Client({
 client.commands = new Collection();
 const slashCommands = [];
 
-// --- KOMUTLARI OTOMATİK YÜKLEME (Akıllı Tarama) ---
+// --- KOMUTLARI OTOMATİK YÜKLEME ---
 const commandsPath = path.join(__dirname, 'commands');
 if (!fs.existsSync(commandsPath)) fs.mkdirSync(commandsPath);
 
@@ -39,13 +40,10 @@ for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
 
-    // Slash Komut mu yoksa Mesaj Komutu mu?
     if ('data' in command && 'execute' in command) {
-        // Slash komutu (Örn: /sorgu, /spam)
         client.commands.set(command.data.name, command);
         slashCommands.push(command.data.toJSON());
     } else if ('name' in command && 'execute' in command) {
-        // Mesaj komutu (Örn: !kur)
         client.commands.set(command.name, command);
     }
 }
@@ -56,7 +54,6 @@ client.once(Events.ClientReady, async (c) => {
     console.log(`🤖 Giriş Yapılan Bot: ${c.user.tag}`);
     console.log(`📂 Yüklenen Komut Sayısı: ${client.commands.size}`);
 
-    // Slash komutlarını Discord API'ye kaydet
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     try {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: slashCommands });
@@ -66,37 +63,30 @@ client.once(Events.ClientReady, async (c) => {
     }
 });
 
-// --- ETKİLEŞİM YÖNETİMİ (Slash, Buton, Modal) ---
+// --- ETKİLEŞİM YÖNETİMİ ---
 client.on(Events.InteractionCreate, async (interaction) => {
-    // Slash Komut Çalıştırıcı
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
-
         try {
             await command.execute(interaction);
         } catch (error) {
             console.error(error);
-            await interaction.reply({ content: 'Bu komut çalıştırılırken bir hata oluştu!', ephemeral: true });
+            await interaction.reply({ content: 'Bir hata oluştu!', ephemeral: true });
         }
     }
-    
-    // Not: Buton ve Modal eventleri komut dosyalarının (sorgu.js, kur.js) 
-    // içinde "collector" veya "interactionCreate" dinleyicisi olarak çalıştığı için 
-    // burayı kalabalıklaştırmıyoruz. Akıllı yönetim bunu gerektirir!
 });
 
-// --- MESAJ KOMUTLARI YÖNETİMİ (!kur vb.) ---
+// --- MESAJ KOMUTLARI (!kur vb.) ---
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const commandName = PREFIX + args.shift().toLowerCase(); // "!kur" haline getirir
+    const commandName = PREFIX + args.shift().toLowerCase();
 
     const command = client.commands.get(commandName);
     if (!command) return;
 
-    // Yetki Kontrolü (Sadece sahip kullanabilsin diyorsan)
     if (commandName === '!kur' && message.author.id !== OWNER_ID) {
         return message.reply('❌ Bu komutu sadece bot sahibi kullanabilir.');
     }
@@ -109,16 +99,25 @@ client.on(Events.MessageCreate, async (message) => {
     }
 });
 
-// --- GLOBAL HATA YAKALAYICI (Botun Kapanmasını Önler) ---
+// --- RENDER 7/24 AKTİF TUTUCU & PORT HATASI ÇÖZÜCÜ ---
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.write("FORCES Bot 7/24 Aktif!");
+    res.end();
+}).listen(process.env.PORT || 3000, () => {
+    console.log("🌐 Render Port Dinleyici Başlatıldı.");
+});
+
+// --- GLOBAL HATA YAKALAYICI ---
 process.on('unhandledRejection', (reason, promise) => {
     console.error('⚠️ Yakalanmayan Hata:', reason);
 });
 
 process.on('uncaughtException', (err) => {
-    console.error('🚫 Kritik Hata (Bot Durdurulmadı):', err);
+    console.error('🚫 Kritik Hata:', err);
 });
 
 // --- GİRİŞ ---
 client.login(TOKEN).catch(err => {
-    console.error('❌ Giriş Başarısız: Token geçersiz olabilir.');
+    console.error('❌ Giriş Başarısız: Token geçersiz!');
 });
