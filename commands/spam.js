@@ -1,42 +1,66 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
-const http = require('http');
-const fs = require('fs');
+const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
-});
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('kur')
+        .setDescription('Woodhook Style Sunucu Kopyalayıcı')
+        .addStringOption(opt => opt.setName('kaynak_id').setDescription('Kopyalanacak Sunucu ID').setRequired(true)),
 
-client.commands = new Collection();
-const commands = [];
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
+    async execute(interaction) {
+        const OWNER_ID = "1389930042200559706";
+        if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: "❌ Yetki reddedildi.", ephemeral: true });
 
-for (const file of commandFiles) {
-    const command = require(`./commands/${file}`);
-    client.commands.set(command.data.name, command);
-    commands.push(command.data.toJSON());
-}
+        const srcId = interaction.options.getString('kaynak_id');
+        const src = interaction.client.guilds.cache.get(srcId);
+        const trg = interaction.guild;
 
-client.once('ready', async () => {
-    console.log(`🚀 Woodhook Style Bot Aktif: ${client.user.tag}`);
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('✅ Komutlar yüklendi.');
-    } catch (e) { console.error(e); }
-});
+        if (!src) return interaction.reply({ content: "❌ Bot kaynak sunucuda bulunamadı!", ephemeral: true });
 
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction);
-});
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('🌀 Woodhook Klonlama Sistemi')
+            .setDescription('**Durum:** İşlem Başlatılıyor...\n**Gecikme:** 1 Saniye');
 
-http.createServer((req, res) => { res.write("Woodhook Online"); res.end(); }).listen(process.env.PORT || 3000);
+        await interaction.reply({ embeds: [embed] });
 
-client.login(process.env.DISCORD_BOT_TOKEN);
+        try {
+            // Sunucu Ayarları
+            await trg.setName(src.name).catch(() => {});
+            if (src.iconURL()) await trg.setIcon(src.iconURL()).catch(() => {});
+
+            // Kanal Temizliği
+            const channels = await trg.channels.fetch();
+            for (const ch of channels.values()) {
+                await ch.delete().catch(() => {});
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            // Rol Kopyalama
+            const srcRoles = (await src.roles.fetch()).filter(r => !r.managed && r.name !== '@everyone').sort((a,b) => a.position - b.position);
+            for (const r of srcRoles.values()) {
+                await trg.roles.create({ name: r.name, color: r.color, permissions: r.permissions, hoist: r.hoist, mentionable: r.mentionable }).catch(() => {});
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            // Kategori ve Kanal İnşası
+            const srcChans = await src.channels.fetch();
+            const cats = srcChans.filter(c => c.type === ChannelType.GuildCategory).sort((a,b) => a.position - b.position);
+
+            for (const cat of cats.values()) {
+                const newCat = await trg.channels.create({ name: cat.name, type: ChannelType.GuildCategory }).catch(() => null);
+                await new Promise(r => setTimeout(r, 1000));
+                if (newCat) {
+                    const children = srcChans.filter(c => c.parentId === cat.id).sort((a,b) => a.position - b.position);
+                    for (const ch of children.values()) {
+                        await trg.channels.create({ name: ch.name, type: ch.type, parent: newCat.id }).catch(() => {});
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                }
+            }
+            embed.setColor('#2ECC71').setDescription('✅ **Klonlama Başarılı!**');
+            await interaction.editReply({ embeds: [embed] });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+};
