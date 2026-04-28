@@ -1,93 +1,68 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 
-// En stabil intent ayarları
+// Botu başlat (Tüm yetkiler açık)
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
-const OWNER_ID = "1389930042200559706";
+// Komutları saklamak için bir koleksiyon oluştur
+client.commands = new Collection();
 
-// --- KOMUT TANIMLARI ---
-const commands = [
-    new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Belirlenen mesajı miktar kadar gönderir.')
-        .addStringOption(opt => opt.setName('mesaj').setDescription('Yazılacak metin').setRequired(true))
-        .addIntegerOption(opt => opt.setName('miktar').setDescription('Kaç adet gönderilsin?').setRequired(true)),
+// --- KOMUT YÜKLEYİCİ (Command Handler) ---
+const commandsPath = path.join(__dirname, 'commands'); // Komutların olduğu klasör adı
 
-    new SlashCommandBuilder()
-        .setName('kur')
-        .setDescription('Sunucuyu kopyalar.')
-        .addStringOption(opt => opt.setName('id').setDescription('Kaynak Sunucu ID').setRequired(true))
-].map(c => c.toJSON());
+if (fs.existsSync(commandsPath)) {
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-// --- BOT HAZIR ---
-client.once('ready', async () => {
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log(`✅ Eski Sistem Aktif: ${client.user.tag}`);
-    } catch (e) { console.error(e); }
-});
-
-// --- KOMUT ÇALIŞTIRICI ---
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: "❌ Yetkin yok!", ephemeral: true });
-
-    const { commandName, options, channel, guild } = interaction;
-
-    // --- SPAM KOMUDU ---
-    if (commandName === 'spam') {
-        const msg = options.getString('mesaj');
-        const count = options.getInteger('miktar');
-        await interaction.reply({ content: `🚀 İşlem başladı.`, ephemeral: true });
-
-        for (let i = 0; i < count; i++) {
-            try {
-                await channel.send(msg);
-                await new Promise(r => setTimeout(r, 1000)); // 1 saniye gecikme (stabilite için)
-            } catch (e) { break; }
+    for (const file of commandFiles) {
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        
+        if ('name' in command && 'execute' in command) {
+            client.commands.set(command.name, command);
+            console.log(`📡 Komut Yüklendi: ${command.name}`);
         }
     }
+} else {
+    console.log("⚠️ 'commands' klasörü bulunamadı! Lütfen oluşturun.");
+}
 
-    // --- KUR KOMUDU ---
-    if (commandName === 'kur') {
-        const srcId = options.getString('id');
-        const src = client.guilds.cache.get(srcId);
-        if (!src) return interaction.reply({ content: "❌ Bot kaynak sunucuda değil!", ephemeral: true });
+// --- MESAJ DİNLEYİCİ ---
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
 
-        await interaction.reply({ content: "🏗️ Kurulum başladı...", ephemeral: true });
+    // Komut dosyasındaki 'name' (örneğin !kur) ile eşleşiyor mu bak
+    const command = client.commands.get(message.content.split(' ')[0]);
 
+    if (command) {
         try {
-            // Mevcut kanalları temizle
-            const currentChans = await guild.channels.fetch();
-            for (const c of currentChans.values()) await c.delete().catch(() => {});
-
-            // Kategorileri ve Kanalları Oluştur
-            const srcChans = await src.channels.fetch();
-            const cats = srcChans.filter(c => c.type === ChannelType.GuildCategory).sort((a,b) => a.position - b.position);
-
-            for (const cat of cats.values()) {
-                const newCat = await guild.channels.create({ name: cat.name, type: ChannelType.GuildCategory });
-                const children = srcChans.filter(c => c.parentId === cat.id).sort((a,b) => a.position - b.position);
-                
-                for (const ch of children.values()) {
-                    await guild.channels.create({ name: ch.name, type: ch.type, parent: newCat.id }).catch(() => {});
-                    await new Promise(r => setTimeout(r, 800));
-                }
-            }
-        } catch (e) { console.error(e); }
+            await command.execute(message);
+        } catch (error) {
+            console.error(error);
+            message.reply('❌ Komut çalıştırılırken bir hata oluştu!');
+        }
     }
 });
 
-// 7/24 Aktif Tutucu
-http.createServer((req, res) => res.end("System Online")).listen(process.env.PORT || 3000);
+// Bot hazır olduğunda
+client.once('ready', () => {
+    console.log(`✅ ${client.user.tag} Giriş Yaptı! Komutlar dinleniyor.`);
+});
+
+// --- 7/24 AKTİF TUTUCU ---
+http.createServer((req, res) => {
+    res.write("FORCES Cloner System is Online!");
+    res.end();
+}).listen(process.env.PORT || 3000);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
