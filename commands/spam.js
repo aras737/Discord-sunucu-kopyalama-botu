@@ -1,47 +1,42 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+require('dotenv').config();
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const http = require('http');
+const fs = require('fs');
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Belirtilen kanala veya mevcut kanala mesaj yağmuru başlatır.')
-        .addStringOption(option => 
-            option.setName('mesaj')
-                .setDescription('Gönderilecek mesaj')
-                .setRequired(true))
-        .addIntegerOption(option => 
-            option.setName('miktar')
-                .setDescription('Kaç adet gönderilecek (Max: 100)')
-                .setRequired(true))
-        .addChannelOption(option => 
-            option.setName('kanal')
-                .setDescription('Spam yapılacak kanal (Seçilmezse mevcut kanal)')
-                .setRequired(false)),
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
 
-    async execute(interaction) {
-        // Sadece senin (Bot sahibi) kullanabilmen için kontrol
-        const OWNER_ID = "1389930042200559706";
-        if (interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: '❌ Bu komutu sadece bot sahibi kullanabilir!', ephemeral: true });
-        }
+client.commands = new Collection();
+const commands = [];
+const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 
-        const messageContent = interaction.options.getString('mesaj');
-        const amount = interaction.options.getInteger('miktar');
-        const targetChannel = interaction.options.getChannel('kanal') || interaction.channel;
+for (const file of commandFiles) {
+    const command = require(`./commands/${file}`);
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
+}
 
-        // Limiti aşmasın diye ufak bir önlem
-        const finalAmount = amount > 100 ? 100 : amount;
+client.once('ready', async () => {
+    console.log(`🚀 Woodhook Style Bot Aktif: ${client.user.tag}`);
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+    try {
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log('✅ Komutlar yüklendi.');
+    } catch (e) { console.error(e); }
+});
 
-        await interaction.reply({ content: `🚀 **${targetChannel.name}** kanalında ${finalAmount} adet spam başlatılıyor...`, ephemeral: true });
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+    const command = client.commands.get(interaction.commandName);
+    if (command) await command.execute(interaction);
+});
 
-        for (let i = 0; i < finalAmount; i++) {
-            try {
-                await targetChannel.send(messageContent);
-                // Discord rate limitine takılmamak için her mesaj arası 1 saniye (1000ms)
-                await new Promise(r => setTimeout(r, 1000)); 
-            } catch (error) {
-                console.error("Spam hatası:", error);
-                break; // Hata alırsak döngüyü kır
-            }
-        }
-    },
-};
+http.createServer((req, res) => { res.write("Woodhook Online"); res.end(); }).listen(process.env.PORT || 3000);
+
+client.login(process.env.DISCORD_BOT_TOKEN);
