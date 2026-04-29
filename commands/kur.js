@@ -4,19 +4,19 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// Bypasser Hız Ayarı (API Ban yememek için değişken gecikme)
-const bypassWait = (ms = 800) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 400) + ms));
+// Bypasser Jitter: Discord API'sini uyutmak için değişken bekleme süresi
+const jitter = (ms = 80) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
 
 module.exports = {
     name: '!kur',
     async execute(message) {
-        const OWNER_ID = "1389930042200559706";
+        const OWNER_ID = "1389930042200559706"; // Senin ID'n
         if (message.author.id !== OWNER_ID) return;
 
         const client = message.client;
         if (!client.kurListenerSet) {
             client.on('interactionCreate', async (int) => {
-                if (int.customId === 'btn_wipe_clone' || int.customId === 'modal_wipe_clone') {
+                if (int.customId === 'btn_nuclear_clone' || int.customId === 'modal_nuclear_clone') {
                     await this.handleInteraction(int);
                 }
             });
@@ -24,41 +24,42 @@ module.exports = {
         }
 
         const embed = new EmbedBuilder()
-            .setColor('#ff0000')
-            .setTitle('☢️ FORCES Wipe & Clone System')
+            .setColor('#000000')
+            .setTitle('☢️ FORCES Nükleer Klonlama Sistemi')
             .setDescription(
-                `**UYARI:** Bu işlem hedef sunucudaki her şeyi SİLECEK ve kaynak sunucuyu birebir kopyalayacaktır.\n\n` +
-                `🌑 **Aşama 1:** Tam Temizlik (Kanallar, Roller, Emojiler)\n` +
-                `🎭 **Aşama 2:** Rol Hiyerarşisi & İzinler\n` +
-                `📁 **Aşama 3:** Kategori & Kanal İnşası\n` +
-                `✨ **Aşama 4:** Emoji & Görsel Kimlik Aktarımı`
+                `🛑 **DİKKAT:** Bu işlem hedef sunucudaki her şeyi SİLECEK!\n\n` +
+                `▫️ **Aşama 1:** Tam Temizlik (Kanal, Rol, Emoji)\n` +
+                `▫️ **Aşama 2:** Kimlik & Rol Hiyerarşisi Aktarımı\n` +
+                `▫️ **Aşama 3:** Kanal & Kategori (Özel İzinli) İnşası\n` +
+                `▫️ **Aşama 4:** Emoji & Sticker Taşıma\n\n` +
+                `*İşlem adımları size DM üzerinden anlık olarak bildirilecektir.*`
             )
-            .setFooter({ text: 'Bypasser Mode: Aktif | Hız: Dinamik' });
+            .setFooter({ text: 'Bypasser Modu: AKTİF | Mod: Deep Wipe & Reset' });
 
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('btn_wipe_clone').setLabel('Sıfırla ve Kur').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId('btn_nuclear_clone').setLabel('Nükleer Temizlik ve Kurulum').setStyle(ButtonStyle.Danger).setEmoji('☣️')
         );
 
         await message.reply({ embeds: [embed], components: [row] });
     },
 
     async handleInteraction(interaction) {
-        if (interaction.isButton() && interaction.customId === 'btn_wipe_clone') {
-            const modal = new ModalBuilder().setCustomId('modal_wipe_clone').setTitle('Wipe & Clone Konfigürasyon');
+        if (interaction.isButton() && interaction.customId === 'btn_nuclear_clone') {
+            const modal = new ModalBuilder().setCustomId('modal_nuclear_clone').setTitle('Klonlama Konfigürasyonu');
             modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kendi Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
                 new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID (Kopyalanacak)').setStyle(TextInputStyle.Short).setRequired(true)),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID (Silinecek)').setStyle(TextInputStyle.Short).setRequired(true))
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID (Sıfırlanacak)').setStyle(TextInputStyle.Short).setRequired(true))
             );
             return await interaction.showModal(modal);
         }
 
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_wipe_clone') {
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_nuclear_clone') {
             await interaction.deferReply({ ephemeral: true });
 
-            const token = interaction.fields.getTextInputValue('t');
-            const srcId = interaction.fields.getTextInputValue('s');
-            const trgId = interaction.fields.getTextInputValue('h');
+            const token = interaction.fields.getTextInputValue('t').trim();
+            const srcId = interaction.fields.getTextInputValue('s').trim();
+            const trgId = interaction.fields.getTextInputValue('h').trim();
 
             const self = new SelfClient({ 
                 checkUpdate: false,
@@ -72,28 +73,38 @@ module.exports = {
                     const src = self.guilds.cache.get(srcId);
                     const trg = self.guilds.cache.get(trgId);
 
-                    if (!src || !trg) return owner.send("❌ Sunucu bulunamadı!").then(() => self.destroy());
+                    if (!src || !trg) return owner.send("❌ **Hata:** Sunucu bulunamadı! Tokenin her iki sunucuda da olduğundan emin ol.");
 
-                    // --- AŞAMA 1: TAM TEMİZLİK ---
-                    await owner.send(`🌑 **Aşama 1 Başladı:** \`${trg.name}\` sunucusu temizleniyor...`);
+                    await owner.send(`🚀 **Nükleer İşlem Başlatıldı!**\n**Hedef:** ${trg.name} (Sıfırlanıyor)\n**Kaynak:** ${src.name} (Kopyalanıyor)`);
+
+                    // --- BÖLÜM 1: TAM TEMİZLİK (WIPE) ---
+                    await owner.send("🧹 **Bölüm 1:** Hedef sunucudaki her şey siliniyor...");
                     
-                    const oldChans = await trg.channels.fetch();
-                    for (const c of oldChans.values()) {
+                    const channels = await trg.channels.fetch();
+                    for (const c of channels.values()) {
                         await c.delete().catch(() => {});
-                        await bypassWait(600);
+                        await jitter(600);
                     }
-
-                    const oldRoles = await trg.roles.fetch();
-                    for (const r of oldRoles.values()) {
+                    
+                    const roles = await trg.roles.fetch();
+                    for (const r of roles.values()) {
                         if (r.name !== '@everyone' && !r.managed && r.editable) {
                             await r.delete().catch(() => {});
-                            await bypassWait(500);
+                            await jitter(500);
                         }
                     }
-                    await owner.send("🧹 Temizlik bitti. Hedef sunucu artık tertemiz.");
 
-                    // --- AŞAMA 2: ROL HİYERARŞİSİ ---
-                    await owner.send("🎭 **Aşama 2:** Roller ve yetkiler inşa ediliyor...");
+                    const emojis = await trg.emojis.fetch();
+                    for (const e of emojis.values()) {
+                        await e.delete().catch(() => {});
+                        await jitter(300);
+                    }
+                    await owner.send("✅ Temizlik bitti. Sunucu şu an tertemiz.");
+
+                    // --- BÖLÜM 2: KİMLİK VE ROLLER ---
+                    await trg.setName(src.name).catch(() => {});
+                    if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
+                    
                     const roleMap = new Map();
                     const srcRoles = src.roles.cache.filter(r => r.name !== '@everyone' && !r.managed).sort((a,b) => a.position - b.position);
                     
@@ -103,11 +114,12 @@ module.exports = {
                             hoist: r.hoist, mentionable: r.mentionable
                         }).catch(() => null);
                         if (newRole) roleMap.set(r.id, newRole.id);
-                        await bypassWait(600);
+                        await jitter(600);
                     }
+                    await owner.send("🎭 **Bölüm 2:** Roller ve hiyerarşi oluşturuldu.");
 
-                    // --- AŞAMA 3: KANAL VE KATEGORİ İNŞASI ---
-                    await owner.send("🏗️ **Aşama 3:** Kategoriler ve kanallar (Özel izinlerle) taşınıyor...");
+                    // --- BÖLÜM 3: KANAL VE KATEGORİLER (İZİNLER DAHİL) ---
+                    await owner.send("🏗️ **Bölüm 3:** Kanallar ve gizli odalar inşa ediliyor...");
                     const srcChans = src.channels.cache.sort((a,b) => a.position - b.position);
                     const categories = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
 
@@ -119,7 +131,7 @@ module.exports = {
                                 allow: o.allow, deny: o.deny, type: o.type
                             }))
                         }).catch(() => null);
-                        await bypassWait(800);
+                        await jitter(800);
 
                         if (newCat) {
                             const children = srcChans.filter(c => c.parentId === cat.id);
@@ -132,30 +144,27 @@ module.exports = {
                                         allow: o.allow, deny: o.deny, type: o.type
                                     }))
                                 }).catch(() => {});
-                                await bypassWait(1000);
+                                await jitter(1000);
                             }
                         }
                     }
 
-                    // --- AŞAMA 4: EMOJİLER VE GÖRSEL ---
-                    await owner.send("✨ **Aşama 4:** Emojiler ve sunucu kimliği kopyalanıyor...");
-                    await trg.setName(src.name).catch(() => {});
-                    if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
-                    
+                    // --- BÖLÜM 4: EMOJİLER ---
+                    await owner.send("✨ **Bölüm 4:** Emojiler taşınıyor...");
                     for (const emoji of src.emojis.cache.values()) {
                         await trg.emojis.create(emoji.url, emoji.name).catch(() => {});
-                        await bypassWait(500);
+                        await jitter(500);
                     }
 
-                    await owner.send(`✅ **İŞLEM TAMAMLANDI.** \`${src.name}\` sunucusu artık tamamen senin.`);
+                    await owner.send(`👑 **İŞLEM TAMAMLANDI!** \`${src.name}\` sunucusu en küçük ayrıntısına kadar klonlandı.`);
                     self.destroy();
                 } catch (err) {
-                    await owner.send(`❌ Hata Oluştu: ${err.message}`);
+                    await owner.send(`❌ **Kritik Hata:** ${err.message}`);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply("Token hatalı kanka!"));
+            self.login(token).catch(() => interaction.editReply("❌ Token hatalı kanka!"));
         }
     }
 };
