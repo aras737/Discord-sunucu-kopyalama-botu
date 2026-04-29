@@ -4,19 +4,19 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// Bypasser Jitter: Discord API'sini uyutmak için değişken bekleme süresi
-const jitter = (ms = 80) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
+// Bypasser Jitter (API ban koruması)
+const jitter = (ms = 600) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 400) + ms));
 
 module.exports = {
     name: '!kur',
     async execute(message) {
-        const OWNER_ID = "1389930042200559706"; // Senin ID'n
+        const OWNER_ID = "1389930042200559706";
         if (message.author.id !== OWNER_ID) return;
 
         const client = message.client;
         if (!client.kurListenerSet) {
             client.on('interactionCreate', async (int) => {
-                if (int.customId === 'btn_nuclear_clone' || int.customId === 'modal_nuclear_clone') {
+                if (int.customId === 'btn_deep_purge' || int.customId === 'modal_deep_purge') {
                     await this.handleInteraction(int);
                 }
             });
@@ -25,47 +25,32 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor('#000000')
-            .setTitle('☢️ FORCES Nükleer Klonlama Sistemi')
+            .setTitle('☣️ FORCES Deep Purge System')
             .setDescription(
-                `🛑 **DİKKAT:** Bu işlem hedef sunucudaki her şeyi SİLECEK!\n\n` +
-                `▫️ **Aşama 1:** Tam Temizlik (Kanal, Rol, Emoji)\n` +
-                `▫️ **Aşama 2:** Kimlik & Rol Hiyerarşisi Aktarımı\n` +
-                `▫️ **Aşama 3:** Kanal & Kategori (Özel İzinli) İnşası\n` +
-                `▫️ **Aşama 4:** Emoji & Sticker Taşıma\n\n` +
-                `*İşlem adımları size DM üzerinden anlık olarak bildirilecektir.*`
+                `**HEDEF:** Tamamen sıfırlanmış, bomboş bir sunucu.\n\n` +
+                `1️⃣ **Kanal Temizliği:** Bitti.\n` +
+                `2️⃣ **Emoji & Sticker Temizliği:** Bitti.\n` +
+                `3️⃣ **Rol Temizliği:** @everyone hariç her şey (Yetki dahilinde).\n` +
+                `4️⃣ **Yeniden İnşa:** Kaynak sunucunun %100 kopyası.`
             )
-            .setFooter({ text: 'Bypasser Modu: AKTİF | Mod: Deep Wipe & Reset' });
+            .setFooter({ text: 'DİKKAT: Bu işlem sunucuyu mezarlığa çevirir.' });
 
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('btn_nuclear_clone').setLabel('Nükleer Temizlik ve Kurulum').setStyle(ButtonStyle.Danger).setEmoji('☣️')
+            new ButtonBuilder().setCustomId('btn_deep_purge').setLabel('Sıfırla ve Kur').setStyle(ButtonStyle.Danger)
         );
 
         await message.reply({ embeds: [embed], components: [row] });
     },
 
     async handleInteraction(interaction) {
-        if (interaction.isButton() && interaction.customId === 'btn_nuclear_clone') {
-            const modal = new ModalBuilder().setCustomId('modal_nuclear_clone').setTitle('Klonlama Konfigürasyonu');
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kendi Hesap Tokenin').setStyle(TextInputStyle.Short).setRequired(true)),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID (Kopyalanacak)').setStyle(TextInputStyle.Short).setRequired(true)),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID (Sıfırlanacak)').setStyle(TextInputStyle.Short).setRequired(true))
-            );
-            return await interaction.showModal(modal);
-        }
-
-        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_nuclear_clone') {
+        if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_deep_purge') {
             await interaction.deferReply({ ephemeral: true });
 
             const token = interaction.fields.getTextInputValue('t').trim();
             const srcId = interaction.fields.getTextInputValue('s').trim();
             const trgId = interaction.fields.getTextInputValue('h').trim();
 
-            const self = new SelfClient({ 
-                checkUpdate: false,
-                userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36" 
-            });
-            
+            const self = new SelfClient({ checkUpdate: false });
             const owner = interaction.user;
 
             self.on('ready', async () => {
@@ -73,53 +58,65 @@ module.exports = {
                     const src = self.guilds.cache.get(srcId);
                     const trg = self.guilds.cache.get(trgId);
 
-                    if (!src || !trg) return owner.send("❌ **Hata:** Sunucu bulunamadı! Tokenin her iki sunucuda da olduğundan emin ol.");
+                    if (!src || !trg) return owner.send("❌ Hata: Sunucu bulunamadı!");
 
-                    await owner.send(`🚀 **Nükleer İşlem Başlatıldı!**\n**Hedef:** ${trg.name} (Sıfırlanıyor)\n**Kaynak:** ${src.name} (Kopyalanıyor)`);
+                    await owner.send(`☣️ **Derin Temizlik Başladı!** Sunucu mezara gönderiliyor...`);
 
-                    // --- BÖLÜM 1: TAM TEMİZLİK (WIPE) ---
-                    await owner.send("🧹 **Bölüm 1:** Hedef sunucudaki her şey siliniyor...");
-                    
+                    // --- ADIM 1: KANALLARI SÜPÜR ---
                     const channels = await trg.channels.fetch();
                     for (const c of channels.values()) {
                         await c.delete().catch(() => {});
-                        await jitter(600);
+                        await jitter(500);
                     }
-                    
-                    const roles = await trg.roles.fetch();
-                    for (const r of roles.values()) {
-                        if (r.name !== '@everyone' && !r.managed && r.editable) {
-                            await r.delete().catch(() => {});
-                            await jitter(500);
-                        }
-                    }
+                    await owner.send("✅ Kanallar yok edildi.");
 
+                    // --- ADIM 2: EMOJİLERİ SÜPÜR ---
                     const emojis = await trg.emojis.fetch();
                     for (const e of emojis.values()) {
                         await e.delete().catch(() => {});
                         await jitter(300);
                     }
-                    await owner.send("✅ Temizlik bitti. Sunucu şu an tertemiz.");
+                    await owner.send("✅ Emojiler yok edildi.");
 
-                    // --- BÖLÜM 2: KİMLİK VE ROLLER ---
+                    // --- ADIM 3: ROLLERİ SÜPÜR (EN KRİTİK KISIM) ---
+                    await owner.send("🎭 **Roller Kökten Kazınıyor...**");
+                    const roles = await trg.roles.fetch();
+                    
+                    // Rolleri hiyerarşik olarak (en alttan üste) silmeye çalışıyoruz
+                    const rolesToDelete = roles.filter(r => r.name !== '@everyone' && !r.managed).sort((a, b) => a.position - b.position);
+                    
+                    for (const r of rolesToDelete.values()) {
+                        if (r.editable) {
+                            await r.delete()
+                                .then(() => console.log(`[PURGE] Silindi: ${r.name}`))
+                                .catch(err => console.log(`[HATA] ${r.name} silinemedi.`));
+                        } else {
+                            await owner.send(`⚠️ **Rol Silinemedi:** \`${r.name}\` (Yetkim bu rolün altında kalıyor, silebilmem için en üste çıkmalıyım!)`);
+                        }
+                        await jitter(500);
+                    }
+                    await owner.send("🧹 Rol temizliği tamamlandı.");
+
+                    // --- ADIM 4: YENİDEN İNŞA (KİMLİK & ROLLER) ---
                     await trg.setName(src.name).catch(() => {});
                     if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
-                    
+
                     const roleMap = new Map();
                     const srcRoles = src.roles.cache.filter(r => r.name !== '@everyone' && !r.managed).sort((a,b) => a.position - b.position);
                     
                     for (const r of srcRoles.values()) {
                         const newRole = await trg.roles.create({
-                            name: r.name, color: r.color, permissions: r.permissions,
-                            hoist: r.hoist, mentionable: r.mentionable
+                            name: r.name,
+                            color: r.color ? Number(r.color) : 0, // Deprecation uyarısı fixlendi
+                            permissions: r.permissions,
+                            hoist: r.hoist,
+                            mentionable: r.mentionable
                         }).catch(() => null);
                         if (newRole) roleMap.set(r.id, newRole.id);
                         await jitter(600);
                     }
-                    await owner.send("🎭 **Bölüm 2:** Roller ve hiyerarşi oluşturuldu.");
 
-                    // --- BÖLÜM 3: KANAL VE KATEGORİLER (İZİNLER DAHİL) ---
-                    await owner.send("🏗️ **Bölüm 3:** Kanallar ve gizli odalar inşa ediliyor...");
+                    // --- ADIM 5: KANALLARIN KURULUMU ---
                     const srcChans = src.channels.cache.sort((a,b) => a.position - b.position);
                     const categories = srcChans.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4);
 
@@ -149,22 +146,15 @@ module.exports = {
                         }
                     }
 
-                    // --- BÖLÜM 4: EMOJİLER ---
-                    await owner.send("✨ **Bölüm 4:** Emojiler taşınıyor...");
-                    for (const emoji of src.emojis.cache.values()) {
-                        await trg.emojis.create(emoji.url, emoji.name).catch(() => {});
-                        await jitter(500);
-                    }
-
-                    await owner.send(`👑 **İŞLEM TAMAMLANDI!** \`${src.name}\` sunucusu en küçük ayrıntısına kadar klonlandı.`);
+                    await owner.send(`👑 **BİTTİ!** Sunucu tamamen sıfırlandı ve kaynak sunucuyla aynı DNA'ya sahip oldu.`);
                     self.destroy();
                 } catch (err) {
-                    await owner.send(`❌ **Kritik Hata:** ${err.message}`);
+                    await owner.send(`❌ Hata: ${err.message}`);
                     self.destroy();
                 }
             });
 
-            self.login(token).catch(() => interaction.editReply("❌ Token hatalı kanka!"));
+            self.login(token).catch(() => interaction.editReply("❌ Token hatalı!"));
         }
     }
 };
