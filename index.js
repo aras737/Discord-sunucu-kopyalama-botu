@@ -1,92 +1,65 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
 const http = require('http');
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildMembers
-    ]
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+const TOKEN = process.env.DISCORD_BOT_TOKEN;
+const CLIENT_ID = "1389930042200559706";
 
-client.commands = new Collection();
-client.slashCommands = [];
+// 1. KOMUT TANIMI
+const commands = [{
+    name: 'spam',
+    description: 'Herkesin gorebilecegi seri mesaj.',
+    options: [
+        { name: 'mesaj', type: 3, description: 'Icerik', required: true },
+        { name: 'miktar', type: 4, description: 'Adet', required: false }
+    ],
+    integration_types: [0, 1],
+    contexts: [0, 1, 2]
+}];
 
-// --- KOMUT YÜKLEME MERKEZİ ---
-const commandsPath = path.join(__dirname, 'commands');
-if (fs.existsSync(commandsPath)) {
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
-
-        if (command.name) {
-            client.commands.set(command.name, command);
-        }
-
-        if (command.data && command.data.name) {
-            client.commands.set(command.data.name, command);
-            client.slashCommands.push(command.data.toJSON());
-            console.log(`🚀 Komut Hazır: ${command.data.name}`);
-        }
-    }
-}
-
-// --- SONSUZ AKTİFLİK & SLASH KAYDI ---
+// 2. BOT HAZIR OLDUĞUNDA
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} Aktif ve Tetikte!`);
-    
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+    console.log(`✅ ${client.user.tag} Aktif!`);
+    const rest = new REST({ version: '10' }).setToken(TOKEN);
     try {
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: client.slashCommands },
-        );
-        // HATALI SATIR BURADA DÜZELTİLDİ:
-        console.log("✨ Komutlar Discord sistemine çakıldı.");
-    } catch (error) {
-        console.error('❌ Kayıt hatası:', error);
-    }
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+        console.log("✨ Komutlar yuklendi.");
+    } catch (e) { console.error(e); }
 });
 
-// --- ETKİLEŞİM YÖNETİMİ ---
+// 3. ANA SPAM MANTIGI (Görseldeki hatayı çözen kısım)
 client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error("Komut Hatası:", error);
-            if (!interaction.replied) {
-                await interaction.reply({ content: '❌ İşlem sırasında bir kopukluk oldu!', ephemeral: true });
-            }
+    if (!interaction.isChatInputCommand() || interaction.commandName !== 'spam') return;
+
+    const msg = interaction.options.getString('mesaj');
+    const amount = interaction.options.getInteger('miktar') || 20;
+
+    // "Düşünüyor..." yazısını hemen silip "Başladı" mesajı verir (Görseldeki hatayı bitirir)
+    await interaction.reply({ content: '🔥 **Bombardiman basladi!**', ephemeral: true });
+
+    let sent = 0;
+    const interval = setInterval(async () => {
+        if (sent >= amount) {
+            clearInterval(interval);
+            return;
         }
-    }
+
+        try {
+            // WEBHOOK ÜZERİNDEN GENEL MESAJ (flags: 0 sayesinde herkes görür)
+            await client.rest.post(
+                Routes.webhookMessage(interaction.applicationId, interaction.token),
+                { body: { content: msg, flags: 0 } }
+            );
+            sent++;
+        } catch (err) {
+            console.log("Mermi takildi, devam ediliyor...");
+            if (err.status !== 429) clearInterval(interval);
+        }
+    }, 850);
 });
 
-// --- ANTİ-CRASH ---
-process.on('unhandledRejection', (reason) => { console.log('🛑 Rejection:', reason); });
-process.on('uncaughtException', (err) => { console.log('🛑 Exception:', err); });
+// Uptime (Render için)
+http.createServer((req, res) => { res.write("Active"); res.end(); }).listen(process.env.PORT || 3000);
 
-// --- UPTIME & SELF-PINGER ---
-const server = http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end("FORCES ACTIVE 24/7");
-});
-
-server.listen(process.env.PORT || 3000, () => {
-    console.log("🌐 Web Sunucusu Aktif.");
-    
-    setInterval(() => {
-        const url = `http://localhost:${process.env.PORT || 3000}`;
-        http.get(url).on('error', (e) => { console.log("Ping hatası yoksayıldı."); });
-    }, 300000); 
-});
-
-client.login(process.env.DISCORD_BOT_TOKEN);
+client.login(TOKEN);
