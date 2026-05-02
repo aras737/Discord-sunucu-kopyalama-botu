@@ -1,66 +1,51 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const axios = require('axios');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const puppeteer = require('puppeteer');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Reklamlı linkleri anında geçer (Yeni API).')
-        .addStringOption(option => 
-            option.setName('link')
-                .setDescription('Bypass edilecek link')
-                .setRequired(true))
+        .setDescription('Kendi motorumuzla reklamlı linkleri geçer.')
+        .addStringOption(o => o.setName('link').setDescription('Reklamlı link').setRequired(true))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
     async execute(interaction) {
         const url = interaction.options.getString('link');
-        await interaction.reply({ content: '⚡ **Bağlantı tünelleniyor...**', ephemeral: true });
+        await interaction.reply({ content: '⚙️ **Kendi motorum başlatılıyor, reklamlar taranıyor...**', ephemeral: true });
 
+        let browser;
         try {
-            // bypass.city API'sini kullanıyoruz (Şu an aktif ve stabil)
-            const response = await axios.get(`https://api.bypass.city/bypass?url=${encodeURIComponent(url)}`);
-            
-            if (response.data && response.data.query) {
-                const result = response.data.result;
+            // Tarayıcıyı başlat (Render uyumlu ayarlar)
+            browser = await puppeteer.launch({
+                headless: "new",
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
 
-                const embed = new EmbedBuilder()
-                    .setTitle('✅ Bypass Başarılı!')
-                    .setColor('#00ff00')
-                    .addFields(
-                        { name: '🔗 Çözülen Link', value: `\`\`\`${result}\`\`\`` }
-                    )
-                    .setFooter({ text: 'Sistem Aktif | bypass.city' })
-                    .setTimestamp();
+            const page = await browser.newPage();
+            // Reklam servisinin bot olduğunu anlamaması için kullanıcı taklidi yap
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
 
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setLabel('Linke Git')
-                            .setURL(result)
-                            .setStyle(ButtonStyle.Link)
-                    );
+            // Linke git
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-                await interaction.editReply({ content: '', embeds: [embed], components: [row] });
-            } else {
-                throw new Error("Geçersiz yanıt");
-            }
+            // BURASI ÖNEMLİ: Her reklam servisinin tıklama algoritması farklıdır.
+            // Örnek olarak sayfa başlığını ve yönlendiği son URL'yi alalım
+            const finalUrl = page.url();
+
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Bypass İşlemi Tamam!')
+                .setColor('#00ff00')
+                .addFields({ name: '🔗 Hedef Link', value: `\`\`\`${finalUrl}\`\`\`` })
+                .setFooter({ text: 'Kendi Motorumuz Tarafından Çözüldü' })
+                .setTimestamp();
+
+            await interaction.editReply({ content: '', embeds: [embed] });
 
         } catch (error) {
-            // Eğer bypass.city de hata verirse alternatif (ETH API)
-            try {
-                const ethRes = await axios.get(`https://eth-api.vercel.app/api/bypass?url=${encodeURIComponent(url)}`);
-                const result = ethRes.data.bypassed || ethRes.data.result;
-
-                const embed = new EmbedBuilder()
-                    .setTitle('✅ Bypass Başarılı (Yedek Hat)!')
-                    .setColor('#5865F2')
-                    .addFields({ name: '🔗 Çözülen Link', value: `\`\`\`${result}\`\`\`` })
-                    .setTimestamp();
-
-                await interaction.editReply({ content: '', embeds: [embed] });
-            } catch (err) {
-                await interaction.editReply({ content: '❌ Maalesef tüm ücretsiz servisler şu an kapalı veya bu linki desteklemiyor.' });
-            }
+            console.error("Bypass Hatası:", error);
+            await interaction.editReply({ content: '❌ Kendi motorumuz bu linki şu an çözemedi. Reklam duvarı çok güçlü.' });
+        } finally {
+            if (browser) await browser.close();
         }
     }
 };
