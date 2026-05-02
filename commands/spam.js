@@ -3,56 +3,45 @@ const { SlashCommandBuilder, Routes } = require('discord.js');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Discord-Wide Vulnerability Mode: Mermileri limitleri zorlayarak diz.')
-        .addStringOption(o => o.setName('mesaj').setDescription('Saldırı metni').setRequired(true))
-        .addIntegerOption(o => o.setName('miktar').setDescription('Mermi sayısı (Max 100)').setRequired(false))
+        .setDescription('Herkesin gorebilecegi seri mesaj.')
+        .addStringOption(o => o.setName('mesaj').setDescription('Icerik').setRequired(true))
+        .addIntegerOption(o => o.setName('miktar').setDescription('Adet').setRequired(false))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
     async execute(interaction) {
-        const OWNER_ID = "1389930042200559706";
-        if (interaction.user.id !== OWNER_ID) return;
+        const msg = interaction.options.getString('mesaj');
+        const count = interaction.options.getInteger('miktar') || 20;
 
-        const content = interaction.options.getString('mesaj');
-        const amount = interaction.options.getInteger('miktar') || 50;
+        // 1. ADIM: ILK YANITI GIZLI VER (Kirmizi hata cikmasin diye)
+        await interaction.reply({ content: 'Saldırı baslatildi kanka...', ephemeral: true });
 
-        // 🛡️ ADIM 1: SİSTEMİ KANDIR (Defer)
-        // Discord'a "ben şu an yoğunum" diyerek 15 dakikalık bir açık kapı bırakıyoruz.
-        await interaction.deferReply({ ephemeral: true });
-
-        console.log(`[TARGET] ${interaction.channelId} kanalına saldırı başladı.`);
-
-        // 🛡️ ADIM 2: WEBHOOK BYPASS DÖNGÜSÜ
-        let fired = 0;
+        // 2. ADIM: ASIL MESAJLARI HERKESE AÇIK GÖNDER
+        let i = 0;
         const interval = setInterval(async () => {
-            if (fired >= amount) {
+            if (i >= count) {
                 clearInterval(interval);
-                await interaction.editReply({ content: '✅ Bombardıman tamamlandı.' });
                 return;
             }
 
             try {
-                // Discord'un en hızlı mesaj yolu: Interaction Token ile Post
+                // Buradaki 'flags: 0' çok önemli! 
+                // Bu sayede "Sadece sen görebilirsin" yazısı kalkar.
                 await interaction.client.rest.post(
                     Routes.webhookMessage(interaction.applicationId, interaction.token),
-                    {
-                        body: {
-                            content: content,
-                            flags: 0, // Herkese açık (Public)
-                            allowed_mentions: { parse: ['everyone'] } // Etiketleri zorla
-                        }
+                    { 
+                        body: { 
+                            content: msg, 
+                            flags: 0 // 0 = Herkes Görür, 64 = Sadece Sen Görürsün
+                        } 
                     }
                 );
-                fired++;
+                i++;
             } catch (err) {
-                if (err.status === 429) {
-                    // Hız sınırına takılırsa 1 saniye bekle ve devam et
-                    console.log("[!] Discord yavaşla dedi, 1s mola...");
-                } else {
-                    console.log("[X] Kanal korumalı veya yetki kapalı.");
-                    clearInterval(interval);
-                }
+                // Eğer burada hata veriyorsa sunucu User App mesajlarını BLOKLAMIŞTIR.
+                console.log("Mesaj gonderilemedi, muhtemelen kanal izni kapali.");
+                clearInterval(interval);
             }
-        }, 650); // 0.65 saniye: Discord'un "güvenli" dediği ama aslında en seri olan hız.
+        }, 850);
     }
 };
