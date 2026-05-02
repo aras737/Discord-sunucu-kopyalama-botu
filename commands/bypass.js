@@ -1,62 +1,57 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const puppeteer = require('puppeteer-extra'); // 'extra' paketini kullanacağız
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-// Bot olduğunu gizleyen eklentiyi aktif et
-puppeteer.use(StealthPlugin());
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const axios = require('axios');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('En güçlü reklam duvarlarını zorlayarak geçer.')
-        .addStringOption(o => o.setName('link').setDescription('Geçilecek link').setRequired(true)),
+        .setDescription('Reklam duvarlarını yıkan hibrit motor.')
+        .addStringOption(o => o.setName('link').setDescription('Reklamlı link').setRequired(true)),
 
     async execute(interaction) {
         const url = interaction.options.getString('link');
         await interaction.deferReply({ ephemeral: true });
 
-        let browser;
-        try {
-            browser = await puppeteer.launch({
-                headless: "new",
-                args: [
-                    '--no-sandbox', 
-                    '--disable-setuid-sandbox',
-                    '--disable-blink-features=AutomationControlled', // Otomasyon kontrolünü kapat
-                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-                ]
-            });
+        // Denenecek API'ler (Sırasıyla)
+        const apis = [
+            `https://api.bypass.city/bypass?url=${encodeURIComponent(url)}`,
+            `https://eth-api.vercel.app/api/bypass?url=${encodeURIComponent(url)}`,
+            `https://dlp.v3.api.bypass.vip/bypass?url=${encodeURIComponent(url)}`
+        ];
 
-            const page = await browser.newPage();
-            
-            // Reklam sitelerinin arkada çalışan "anti-bypass" scriptlerini boz
-            await page.evaluateOnNewDocument(() => {
-                Object.defineProperty(navigator, 'webdriver', { get: () => false });
-            });
+        let result = null;
+        let success = false;
 
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        for (const api of apis) {
+            try {
+                const res = await axios.get(api, { timeout: 8000 });
+                if (res.data && (res.data.result || res.data.bypassed)) {
+                    result = res.data.result || res.data.bypassed;
+                    success = true;
+                    break; // Bir tanesi çalıştıysa döngüden çık
+                }
+            } catch (e) {
+                continue; // Hata verirse bir sonrakini dene
+            }
+        }
 
-            // Agresif Bekleme ve Atlama (Örn: Linkvertise için)
-            // Sayfadaki tüm gizli linkleri veya yönlendirme scriptlerini ayıkla
-            const finalUrl = await page.evaluate(async () => {
-                // Burada reklam servisinin türüne göre özel JS kodları çalıştırılabilir
-                // Şimdilik en son ulaşılan hedef URL'yi döndürüyoruz
-                return window.location.href;
-            });
-
+        if (success) {
             const embed = new EmbedBuilder()
-                .setTitle('💀 Zorlu Bypass Başarılı')
-                .setColor('#ff0000')
-                .addFields({ name: '🔗 Kırılan Link', value: `\`\`\`${finalUrl}\`\`\`` })
-                .setFooter({ text: 'Agresif Motor Aktif' });
+                .setTitle('💀 Bypass Successful! | Agresif Mode')
+                .setColor('#ff4747')
+                .addFields(
+                    { name: '💻 PC Result', value: `\`\`\`${result}\`\`\`` },
+                    { name: '📱 Mobile Result', value: `\`\`\`${result}\`\`\`` }
+                )
+                .setFooter({ text: 'Powered by Aras Bypass Engine' })
+                .setTimestamp();
 
-            await interaction.editReply({ embeds: [embed] });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setLabel('Linke Git').setURL(result).setStyle(ButtonStyle.Link)
+            );
 
-        } catch (error) {
-            console.error("Zorlu Bypass Hatası:", error);
-            await interaction.editReply({ content: '❌ Duvarı aşamadık, site botu engelledi.' });
-        } finally {
-            if (browser) await browser.close();
+            await interaction.editReply({ content: '', embeds: [embed], components: [row] });
+        } else {
+            await interaction.editReply({ content: '❌ **Bütün motorlar denendi ama link kırılamadı.** Reklam duvarı çok güncel olabilir.' });
         }
     }
 };
