@@ -4,77 +4,63 @@ const axios = require('axios');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Reklamlı linkleri saniyeler içinde geçer.')
+        .setDescription('Reklamlı linkleri anında geçer (Yeni API).')
         .addStringOption(option => 
             option.setName('link')
-                .setDescription('Bypass edilecek link (Linkvertise vb.)')
+                .setDescription('Bypass edilecek link')
                 .setRequired(true))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
     async execute(interaction) {
         const url = interaction.options.getString('link');
-        await interaction.reply({ content: '🔍 **Bypass işlemi başlatıldı...**', ephemeral: true });
+        await interaction.reply({ content: '⚡ **Bağlantı tünelleniyor...**', ephemeral: true });
 
         try {
-            // --- API 1 (Bypass.vip) ---
-            let response = await axios.get(`https://api.bypass.vip/bypass?url=${encodeURIComponent(url)}`).catch(() => null);
+            // bypass.city API'sini kullanıyoruz (Şu an aktif ve stabil)
+            const response = await axios.get(`https://api.bypass.city/bypass?url=${encodeURIComponent(url)}`);
             
-            // --- API 2 (Yedek: Adlinkfly Bypass) ---
-            if (!response || !response.data || response.data.status !== "success") {
-                response = await axios.get(`https://adbypass.org/api/bypass?url=${encodeURIComponent(url)}`).catch(() => null);
-            }
-
-            if (response && response.data && (response.data.status === "success" || response.data.bypassed_url)) {
-                const result = response.data.result || response.data.bypassed_url;
+            if (response.data && response.data.query) {
+                const result = response.data.result;
 
                 const embed = new EmbedBuilder()
-                    .setTitle('✅ Bypass successful! 🎧')
-                    .setColor('#f04747') // Fotoğraftaki o kırmızı/turuncu ton
+                    .setTitle('✅ Bypass Başarılı!')
+                    .setColor('#00ff00')
                     .addFields(
-                        { name: '⌨️ Copy PC', value: `\`\`\`${result}\`\`\`` },
-                        { name: '🤖 Copy Mobile', value: `\`\`\`${result}\`\`\`` }
+                        { name: '🔗 Çözülen Link', value: `\`\`\`${result}\`\`\`` }
                     )
-                    .setFooter({ text: `Time taken: ${response.data.time || '2.45'}s` })
+                    .setFooter({ text: 'Sistem Aktif | bypass.city' })
                     .setTimestamp();
 
                 const row = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
-                            .setCustomId('copy_pc_btn')
-                            .setLabel('Copy PC')
-                            .setEmoji('💻')
-                            .setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder()
-                            .setCustomId('copy_mobile_btn')
-                            .setLabel('Copy Mobile')
-                            .setEmoji('📱')
-                            .setStyle(ButtonStyle.Secondary)
-                    );
-
-                const serverRow = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setLabel('Join our Server')
-                            .setEmoji('🔗')
-                            .setURL('https://discord.gg/senin-linkin')
+                            .setLabel('Linke Git')
+                            .setURL(result)
                             .setStyle(ButtonStyle.Link)
                     );
 
-                await interaction.editReply({ 
-                    content: '', 
-                    embeds: [embed], 
-                    components: [row, serverRow] 
-                });
+                await interaction.editReply({ content: '', embeds: [embed], components: [row] });
             } else {
-                await interaction.editReply({ 
-                    content: '❌ **HATA:** Link geçilemedi. Link hatalı olabilir veya tüm servisler şu an meşgul. Lütfen biraz sonra tekrar dene.' 
-                });
+                throw new Error("Geçersiz yanıt");
             }
 
         } catch (error) {
-            console.error("Bypass Genel Hata:", error.message);
-            await interaction.editReply({ content: '🛑 **Sistemsel Hata:** API sunucularına bağlanılamıyor.' });
+            // Eğer bypass.city de hata verirse alternatif (ETH API)
+            try {
+                const ethRes = await axios.get(`https://eth-api.vercel.app/api/bypass?url=${encodeURIComponent(url)}`);
+                const result = ethRes.data.bypassed || ethRes.data.result;
+
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ Bypass Başarılı (Yedek Hat)!')
+                    .setColor('#5865F2')
+                    .addFields({ name: '🔗 Çözülen Link', value: `\`\`\`${result}\`\`\`` })
+                    .setTimestamp();
+
+                await interaction.editReply({ content: '', embeds: [embed] });
+            } catch (err) {
+                await interaction.editReply({ content: '❌ Maalesef tüm ücretsiz servisler şu an kapalı veya bu linki desteklemiyor.' });
+            }
         }
     }
 };
