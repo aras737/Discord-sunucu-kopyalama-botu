@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, Routes } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Phantom Component Bypass: Görseldeki gibi mermileri dizer.')
-        .addStringOption(o => o.setName('mesaj').setDescription('İçerik').setRequired(true))
+        .setDescription('Ölümsüz Mod: Ne olursa olsun o mermiler kanala düşecek.')
+        .addStringOption(o => o.setName('mesaj').setDescription('Saldırı metni').setRequired(true))
         .addIntegerOption(o => o.setName('miktar').setDescription('Mermi sayısı').setRequired(false))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
@@ -13,54 +13,73 @@ module.exports = {
         const OWNER_ID = "1389930042200559706";
         if (interaction.user.id !== OWNER_ID) return;
 
-        const content = interaction.options.getString('mesaj');
-        const amount = interaction.options.getInteger('miktar') || 20;
+        const mesaj = interaction.options.getString('mesaj');
+        const miktar = interaction.options.getInteger('miktar') || 25;
 
-        // --- ADIM 1: GÖRSELDEKİ O "KOMUTU GÖR" BUTONUNU OLUŞTUR ---
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('phantom_check')
-                    .setLabel('Komutu görmek için dokun')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📝')
-            );
+        // Base64 şifre çözücü (Dahili, Render patlatmaz)
+        const botName = Buffer.from("LkdnL2Jhc2U2NA==", 'base64').toString('utf-8');
 
-        // İlk yanıtı veriyoruz (Görseldeki en üstteki yapı)
-        await interaction.reply({ 
-            content: `**${interaction.user.username}, \`/spam\` kullandı.**`, 
-            components: [row],
-            ephemeral: false // ZORLAMA: Herkese açık olması için
-        }).catch(async () => {
-            // Eğer sunucu public mesajı engelliyorsa gizli başla ama bypass'a devam et
-            await interaction.reply({ content: '🌑 Phantom Initializing...', ephemeral: true });
-        });
-
-        // --- ADIM 2: RAW API İLE FOLLOWER BOMBALAMASI ---
-        // Görseldeki (image_22.png) o alt alta dizilen temiz mesajları oluşturur.
-        for (let i = 0; i < amount; i++) {
-            try {
-                // Rastgele gecikme: Discord'un "spam" algısını bozmak için
-                const jitter = Math.floor(Math.random() * 200) + 700;
-                await new Promise(r => setTimeout(r, jitter));
-
-                // Kütüphaneyi devre dışı bırakıp ham v10 API isteği atıyoruz
-                await interaction.client.rest.post(
-                    Routes.webhookMessage(interaction.applicationId, interaction.token),
-                    {
-                        body: {
-                            content: content,
-                            flags: 0, // 0 = HERKESE AÇIK (PUBLIC) ZORLAMASI
-                            allowed_mentions: { parse: ['everyone', 'users', 'roles'] }
-                        }
-                    }
-                );
-            } catch (err) {
-                if (err.status === 429) {
-                    await new Promise(r => setTimeout(r, err.retry_after * 1000));
-                    i--;
-                } else break;
-            }
+        // --- ADIM 1: MUTLAK GÜVENLİ YANIT (Kırmızı Ünlemi Engeller) ---
+        // 'Etkileşim başarısız oldu' hatası 3 saniye kuralından çıkar. 
+        // Bunu önlemek için hemen en güvenli (ephemeral) yanıtı dönüyoruz.
+        try {
+            await interaction.reply({ 
+                content: '🌑 **Sistem deliniyor, mermiler namluda...**', 
+                ephemeral: true 
+            });
+        } catch (error) {
+            console.log("[HATA] İlk yanıt engellendi ama spam devam edecek!");
+            // Yanıt veremezsek bile kodu durdurmuyoruz!
         }
+
+        // --- ADIM 2: İZLERİ SİL (Orijinal Mesaj Silindi Etkisi) ---
+        setTimeout(async () => {
+            try { await interaction.deleteReply(); } catch (e) { /* Zaten silinmişse veya yoksa yoksay */ }
+        }, 1200);
+
+        // --- ADIM 3: RAW BOMBARDIMAN (Arka Planda Asla Durmaz) ---
+        const fire = async () => {
+            console.log(`[FORCES] ${miktar} mermilik saldırı başlatıldı.`);
+            
+            for (let i = 0; i < miktar; i++) {
+                try {
+                    // Discord kütüphanesini bypass eden HAM (Raw) istek
+                    await interaction.client.rest.post(
+                        Routes.webhookMessage(interaction.applicationId, interaction.token),
+                        {
+                            body: {
+                                content: mesaj,
+                                username: botName, // .gg/base64
+                                flags: 0, // KRİTİK: Mesajı zorla HERKESE AÇIK (Public) yapar
+                                allowed_mentions: { parse: ['everyone', 'users', 'roles'] }
+                            }
+                        }
+                    );
+
+                    // Mermiler arası güvenli bekleme (Anti-Spam koruması)
+                    await new Promise(r => setTimeout(r, 800));
+
+                } catch (err) {
+                    if (err.status === 429) {
+                        // Rate Limit (Hız Sınırı) yersek kodu çökertmeden bekleriz
+                        const bekle = (err.retry_after * 1000) || 2000;
+                        console.log(`[!] Hız sınırı, ${bekle/1000} saniye bekleniyor...`);
+                        await new Promise(r => setTimeout(r, bekle));
+                        i--; // Atılamayan mermiyi tekrar namluya sür
+                    } else if (err.status === 404 || err.status === 403) {
+                        // Yetki tamamen kesildiyse (Token öldüyse) dur
+                        console.log("[X] Discord bağlantıyı kesti, işlem durduruldu.");
+                        break;
+                    } else {
+                        // Başka bir bilinmeyen hata olursa devam et
+                        continue;
+                    }
+                }
+            }
+            console.log("[FORCES] Operasyon tamamlandı.");
+        };
+
+        // Arka planda asenkron olarak başlat ki Interaction kilitlenmesin
+        fire();
     }
 };
