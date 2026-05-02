@@ -1,73 +1,46 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, WebhookClient } = require('discord.js');
-
-const activeSpams = new Map();
+const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
-    name: '!spam',
-    async execute(message) {
+    data: new SlashCommandBuilder()
+        .setName('spamm')
+        .setDescription('Kullanıcı Uygulaması: Her yerde spam atmanızı sağlar.')
+        .addStringOption(option => 
+            option.setName('mesaj')
+                .setDescription('Gönderilecek içerik')
+                .setRequired(true))
+        .addIntegerOption(option => 
+            option.setName('tekrar')
+                .setDescription('Kaç adet gönderilsin? (Max: 20)')
+                .setRequired(false))
+        // --- KRİTİK AYARLAR ---
+        // 0: Guild, 1: DM, 2: Grup/Dış Sunucu (Botun olmadığı yerler)
+        .setContexts([0, 1, 2]) 
+        // 0: Guild Install, 1: User Install (Hesabına yükleme)
+        .setIntegrationTypes([0, 1]),
+
+    async execute(interaction) {
+        // Sadece senin ID'n (FORCES Sahibi)
         const OWNER_ID = "1389930042200559706";
-        if (message.author.id !== OWNER_ID) return;
-
-        const args = message.content.split(' ').slice(1);
-        const spamMesajı = args.join(' ');
-
-        if (!spamMesajı) return message.reply("⚠️ Kullanım: `!spam [mesaj]`");
-
-        // Önceki spamı temizle
-        if (activeSpams.has(message.channel.id)) {
-            clearInterval(activeSpams.get(message.channel.id));
+        if (interaction.user.id !== OWNER_ID) {
+            return interaction.reply({ content: "❌ Bu özel yetenek sadece sahibime aittir.", ephemeral: true });
         }
 
-        const embed = new EmbedBuilder()
-            .setColor('#2b2d31')
-            .setTitle('🕵️ Hayalet Spam (Webhook) Başladı')
-            .setDescription(`**Mesaj:** ${spamMesajı}\n**Yöntem:** Webhook (Banlanamaz)`)
-            .setFooter({ text: 'Durdurmak için butona bas.' });
+        const icerik = interaction.options.getString('mesaj');
+        let miktar = interaction.options.getInteger('tekrar') || 5;
+        if (miktar > 20) miktar = 20; // Botun ban yememesi için limit
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('stop_webhook_spam').setLabel('Sistemi Kapat').setStyle(ButtonStyle.Danger)
-        );
+        // İlk mesaj (Görseldeki gibi Uygulama yanıtı)
+        await interaction.reply({ content: icerik });
 
-        await message.channel.send({ embeds: [embed], components: [row] });
-
-        // --- WEBHOOK OLUŞTURMA VE BASMA ---
-        const startSpam = async () => {
+        // Döngü ile alt alta dizme
+        for (let i = 0; i < miktar - 1; i++) {
             try {
-                // Kanalda bir webhook oluştur (veya var olanı kullan)
-                const webhook = await message.channel.createWebhook({
-                    name: 'Ghost Bot', // Buraya rastgele isimler de ekleyebilirsin
-                    avatar: 'https://i.imgur.com/8nLFC9S.png',
-                });
-
-                const interval = setInterval(async () => {
-                    await webhook.send({
-                        content: `@everyone ${spamMesajı}`,
-                        username: `User-${Math.floor(Math.random() * 9999)}`, // Sürekli değişen isim
-                    }).catch(async () => {
-                        // Eğer webhook silinirse döngüyü kır ve yeni webhook aç
-                        clearInterval(interval);
-                        startSpam(); 
-                    });
-                }, 800); // 0.8 saniye hız
-
-                activeSpams.set(message.channel.id, interval);
-            } catch (e) {
-                message.author.send("❌ Webhook oluşturma yetkim yok kanka!").catch(() => {});
+                // Discord Rate Limit koruması için kısa bekleme
+                await new Promise(res => setTimeout(res, 700));
+                await interaction.followUp({ content: icerik });
+            } catch (err) {
+                break; // Kanal kilitliyse dur
             }
-        };
-
-        startSpam();
-
-        // --- DURDURMA BUTONU ---
-        const collector = message.channel.createMessageComponentCollector({ 
-            filter: i => i.customId === 'stop_webhook_spam' && i.user.id === OWNER_ID 
-        });
-
-        collector.on('collect', async i => {
-            clearInterval(activeSpams.get(message.channel.id));
-            activeSpams.delete(message.channel.id);
-            await i.update({ content: '✅ Hayalet Spam durduruldu.', embeds: [], components: [] });
-            collector.stop();
-        });
+        }
     }
 };
