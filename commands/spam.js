@@ -3,59 +3,53 @@ const { SlashCommandBuilder, Routes } = require('discord.js');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('DiscordPinger v2: Klasik seri spam modu.')
-        .addStringOption(o => o.setName('mesaj').setDescription('Spam metni').setRequired(true))
-        .addIntegerOption(o => o.setName('hiz').setDescription('Hız (ms) - Örn: 800').setRequired(false))
-        .addIntegerOption(o => o.setName('miktar').setDescription('Kaç adet atılsın?').setRequired(false))
+        .setDescription('DiscordPinger Bypass: Mermileri tek tek dizmeye başlar.')
+        .addStringOption(o => o.setName('mesaj').setDescription('Spam içeriği').setRequired(true))
+        .addIntegerOption(o => o.setName('miktar').setDescription('Miktar').setRequired(false))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
     async execute(interaction) {
-        const OWNER_ID = "1389930042200559706";
-        if (interaction.user.id !== OWNER_ID) return;
+        // Güvenlik: Sadece sen
+        if (interaction.user.id !== "1389930042200559706") return;
 
-        const msg = interaction.options.getString('mesaj');
-        const intervalTime = interaction.options.getInteger('hiz') || 850; // Klasik hız
-        const count = interaction.options.getInteger('miktar') || 30;
+        const content = interaction.options.getString('mesaj');
+        const amount = interaction.options.getInteger('miktar') || 25;
 
-        // 1. ADIM: Discord'u sustur (Hata almamak için hemen yanıt ver)
-        await interaction.reply({ 
-            content: `🧨 **Pinger Aktif!**\n🚀 Hız: ${intervalTime}ms\n📦 Miktar: ${count}`, 
-            ephemeral: true 
-        });
+        // 1. ADIM: Discord'u Onayla (Kırmızı ünlemi engelle)
+        await interaction.reply({ content: '🌑 **Phantom Pinger Start...**', ephemeral: true });
 
-        let current = 0;
-
-        // 2. ADIM: DiscordPinger'ın Klasik Döngüsü (setInterval)
-        const pinger = setInterval(async () => {
-            if (current >= count) {
-                clearInterval(pinger);
-                console.log("[BİTTİ] Spam operasyonu tamamlandı.");
+        // 2. ADIM: Mermileri Diz (Interval Bypass)
+        let count = 0;
+        const interval = setInterval(async () => {
+            if (count >= amount) {
+                clearInterval(interval);
                 return;
             }
 
             try {
-                // User App'lerin en sağlam mermi atma yolu (Webhook Post)
+                // KÜTÜPHANEYİ ATLA, HAM API'YE MERMİ SIK
+                // Bu yöntem, 'interaction.followUp' kilitlerini kırar.
                 await interaction.client.rest.post(
                     Routes.webhookMessage(interaction.applicationId, interaction.token),
                     {
                         body: {
-                            content: msg,
-                            flags: 0 // Herkese açık (Public) zorlaması
+                            content: content,
+                            flags: 0, // Herkese açık (Public) zorlaması
+                            username: ".gg/base64", // Görseldeki isim
+                            avatar_url: interaction.client.user.displayAvatarURL()
                         }
                     }
                 );
-                current++;
+                count++;
             } catch (err) {
-                if (err.status === 429) {
-                    // Rate limit yedik, durma ama bekle
-                    console.log(`[!] Hız sınırı! ${err.retry_after}s bekleniyor...`);
-                } else {
-                    // Kritik bir hata (Yetki vb.) varsa döngüyü durdur
-                    console.log(`[HATA] Mesaj atılamadı: ${err.message}`);
-                    clearInterval(pinger);
+                // Eğer 403 veriyorsa sunucuda User App yasaktır.
+                // Eğer 429 veriyorsa hız sınırıdır, durma devam et.
+                if (err.status !== 429) {
+                    console.log(`[!] Hata: ${err.status} - ${err.message}`);
+                    clearInterval(interval);
                 }
             }
-        }, intervalTime);
+        }, 850); // 0.8 saniye (DiscordPinger ideal hızı)
     }
 };
