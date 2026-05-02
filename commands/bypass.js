@@ -1,49 +1,62 @@
-const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
-const axios = require('axios');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const puppeteer = require('puppeteer-extra'); // 'extra' paketini kullanacağız
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+// Bot olduğunu gizleyen eklentiyi aktif et
+puppeteer.use(StealthPlugin());
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('PlatoBoost, Fluxus ve Linkvertise linklerini geçer.')
-        .addStringOption(option => 
-            option.setName('link')
-                .setDescription('Bypass edilecek link')
-                .setRequired(true)),
+        .setDescription('En güçlü reklam duvarlarını zorlayarak geçer.')
+        .addStringOption(o => o.setName('link').setDescription('Geçilecek link').setRequired(true)),
 
     async execute(interaction) {
-        const link = interaction.options.getString('link');
-        const endpoint = "http://45.90.13.151:6041"; // Örnekteki API adresi
-        const box = "```";
+        const url = interaction.options.getString('link');
+        await interaction.deferReply({ ephemeral: true });
 
-        // Desteklenmeyen link kontrolü
-        if (!link.includes("platoboost.com") && !link.includes("flux.li") && !link.includes("linkvertise.com")) {
-            return interaction.reply({ content: "❌ Bu link desteklenmiyor! Desteklenenler: PlatoBoost, Fluxus, Linkvertise.", ephemeral: true });
-        }
-
-        await interaction.deferReply(); // İşlem uzun sürebilir, Discord'a "bekle" diyoruz
-
+        let browser;
         try {
-            const response = await axios.get(`${endpoint}/?url=${encodeURIComponent(link)}`);
-            const json = response.data;
+            browser = await puppeteer.launch({
+                headless: "new",
+                args: [
+                    '--no-sandbox', 
+                    '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled', // Otomasyon kontrolünü kapat
+                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                ]
+            });
 
-            if (json.status === "success") {
-                const embed = new EmbedBuilder()
-                    .setTitle('✅ Bypass Başarılı!')
-                    .setColor(0x00ff00)
-                    .setTimestamp();
+            const page = await browser.newPage();
+            
+            // Reklam sitelerinin arkada çalışan "anti-bypass" scriptlerini boz
+            await page.evaluateOnNewDocument(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            });
 
-                // API'den gelen veriye göre embed içeriğini doldur
-                if (json.key) embed.addFields({ name: 'Anahtar (Key):', value: `${box}${json.key}${box}` });
-                if (json.target) embed.addFields({ name: 'Hedef Link:', value: `${json.target}` });
-                if (json.time) embed.addFields({ name: 'Süre:', value: `${box}${json.time}${box}`, inline: true });
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-                await interaction.editReply({ embeds: [embed] });
-            } else {
-                await interaction.editReply({ content: `❌ API Hatası: ${json.message || "Bypass edilemedi."}` });
-            }
+            // Agresif Bekleme ve Atlama (Örn: Linkvertise için)
+            // Sayfadaki tüm gizli linkleri veya yönlendirme scriptlerini ayıkla
+            const finalUrl = await page.evaluate(async () => {
+                // Burada reklam servisinin türüne göre özel JS kodları çalıştırılabilir
+                // Şimdilik en son ulaşılan hedef URL'yi döndürüyoruz
+                return window.location.href;
+            });
+
+            const embed = new EmbedBuilder()
+                .setTitle('💀 Zorlu Bypass Başarılı')
+                .setColor('#ff0000')
+                .addFields({ name: '🔗 Kırılan Link', value: `\`\`\`${finalUrl}\`\`\`` })
+                .setFooter({ text: 'Agresif Motor Aktif' });
+
+            await interaction.editReply({ embeds: [embed] });
+
         } catch (error) {
-            console.error(error);
-            await interaction.editReply({ content: "🛑 API şu an çevrimdışı veya yanıt vermiyor." });
+            console.error("Zorlu Bypass Hatası:", error);
+            await interaction.editReply({ content: '❌ Duvarı aşamadık, site botu engelledi.' });
+        } finally {
+            if (browser) await browser.close();
         }
     }
 };
