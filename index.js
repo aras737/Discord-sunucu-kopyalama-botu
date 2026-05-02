@@ -1,4 +1,4 @@
-require('dotenv').config(); // 'Require' düzeltildi
+require('dotenv').config(); // Büyük harf hatası düzeltildi
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +8,7 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.MessageContent, // !kur için bu şart
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildMembers
     ]
@@ -25,91 +25,85 @@ if (fs.existsSync(commandsPath)) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
 
-        // Mesaj tabanlı komutlar (!kur gibi)
+        // 1. Durum: Mesaj Tabanlı Komutlar (Örn: name: 'kur')
         if (command.name) {
             client.commands.set(command.name, command);
+            console.log(`📡 Prefix Komutu Hazır: !${command.name}`);
         }
 
-        // Slash komutlar (/spam gibi)
+        // 2. Durum: Slash Komutlar (Örn: data: new SlashCommandBuilder...)
         if (command.data && command.data.name) {
             client.commands.set(command.data.name, command);
             client.slashCommands.push(command.data.toJSON());
-            console.log(`🚀 Slash Komutu Listeye Eklendi: ${command.data.name}`);
+            console.log(`🚀 Slash Komutu Hazır: /${command.data.name}`);
         }
     }
 }
 
-// --- HAZIR OLMA & SLASH KAYDI ---
+// --- HAZIR OLMA & KOMUTLARI DİSCORD'A GÖNDERME ---
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} Aktif!`);
+    console.log(`✅ ${client.user.tag} Giriş Yaptı!`);
     
-    // REST API'yi başlat
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
-
     try {
         console.log("🔄 Slash komutları globale kaydediliyor...");
-        
-        // Komutları yükle (client.user.id hazır olduğu için Routes artık çalışır)
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: client.slashCommands },
         );
-        
         console.log("✨ Komutlar Discord API sistemine başarıyla çakıldı.");
     } catch (error) {
-        console.error("❌ Komut yükleme sırasında hata oluştu:", error);
+        console.error("❌ Kayıt hatası:", error);
     }
 });
 
-// --- ETKİLEŞİM YÖNETİMİ ---
+// --- ETKİLEŞİM YÖNETİMİ (Slash Komutlar) ---
 client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
+    if (!interaction.isChatInputCommand()) return;
 
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error(error);
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: '❌ Komut çalıştırılırken hata oluştu!', ephemeral: true });
-            }
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+
+    try {
+        await command.execute(interaction);
+    } catch (error) {
+        console.error(error);
+        if (!interaction.replied) {
+            await interaction.reply({ content: '❌ Komut hatası!', ephemeral: true });
         }
     }
-
-    // Destek sistemi handler'ı
-    const supportCommand = client.commands.get('destek-kur');
-    if (supportCommand && supportCommand.interactionHandler) {
-        try {
-            await supportCommand.interactionHandler(interaction);
-        } catch (err) {}
-    }
 });
 
-// --- MESAJ KOMUTLARI ---
+// --- MESAJ YÖNETİMİ (!kur Komutları) ---
 client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.content.startsWith("!")) return;
+    if (message.author.bot) return;
 
-    const args = message.content.slice(1).trim().split(/ +/);
+    const prefix = "!"; // Prefix buraya
+    if (!message.content.startsWith(prefix)) return;
+
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
+    // Sadece 'name' özelliği olan prefix komutlarını bul
     const command = client.commands.get(commandName);
-    if (command && !command.data) { // Sadece mesaj komutlarını (slash olmayan) çalıştır
+    
+    if (command && command.execute && !command.data) {
         try {
             await command.execute(message, args);
         } catch (error) {
             console.error(error);
+            message.reply("❌ Bu komut çalıştırılırken bir hata oluştu.");
         }
     }
 });
 
 // --- ANTI-CRASH & UPTIME ---
-process.on('unhandledRejection', e => console.log('🛑 Rejection:', e));
-process.on('uncaughtException', e => console.log('🛑 Exception:', e));
+process.on('unhandledRejection', e => console.log('🛑 Hata:', e));
+process.on('uncaughtException', e => console.log('🛑 Hata:', e));
 
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end("FORCES ACTIVE");
+    res.end("BOT ONLINE");
 }).listen(process.env.PORT || 3000);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
