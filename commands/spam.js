@@ -3,9 +3,15 @@ const { SlashCommandBuilder, Routes } = require('discord.js');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Ghost Bypass: Orijinal yanıtı silerek engel duvarını aşar.')
-        .addStringOption(option => option.setName('mesaj').setRequired(true).setDescription('İçerik'))
-        .addIntegerOption(option => option.setName('tekrar').setRequired(false).setDescription('Miktar'))
+        .setDescription('Ghost Bypass: Orijinal mesajı silerek herkese açık spam atar.')
+        .addStringOption(option => 
+            option.setName('mesaj')
+                .setDescription('Spam içeriği')
+                .setRequired(true))
+        .addIntegerOption(option => 
+            option.setName('tekrar')
+                .setDescription('Miktar')
+                .setRequired(false))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
@@ -16,35 +22,32 @@ module.exports = {
         const icerik = interaction.options.getString('mesaj');
         const miktar = interaction.options.getInteger('tekrar') || 10;
 
-        // --- ADIM 1: GİZLİ BAŞLAT ---
-        // Önce sessizce bir cevap veriyoruz ki interaction sonlanmasın.
-        await interaction.reply({ content: "🛰️ Bypass başlatılıyor...", ephemeral: true });
+        // 1. ADIM: Videodaki gibi "Komut gönderiliyor..." yanıtını ver (Gizli başlat)
+        await interaction.reply({ content: '⌛ Komut gönderiliyor...', ephemeral: true });
 
-        // --- ADIM 2: İMHA (Orijinal Yanıtı Sil) ---
-        // Görseldeki "Orijinal mesaj silinmiş" yazısının sebebi budur.
-        await interaction.deleteReply();
+        // 2. ADIM: Orijinal yanıtı siliyoruz
+        // Görseldeki (image_13.png) "Orijinal mesaj silinmiş" yazısı tam burada oluşur.
+        await interaction.deleteReply().catch(() => {});
 
-        // --- ADIM 3: HAYALET SALDIRI (Public FollowUp) ---
-        // Orijinal cevap silindiği için, bundan sonra atılan followUp'lar 
-        // bazı sunucu konfigürasyonlarında herkese açık (public) düşer.
+        // 3. ADIM: RAW API ile Follow-up Bombardımanı
+        // Kütüphaneyi devre dışı bırakıp doğrudan Discord API'sine "flag: 0" (Public) gönderiyoruz.
         for (let i = 0; i < miktar; i++) {
             try {
-                await new Promise(r => setTimeout(r, 800)); // Hız sınırı (Rate limit)
-                
-                // RAW API ile followUp gönderiyoruz, flagları tamamen kaldırıyoruz.
+                await new Promise(r => setTimeout(r, 700)); // Hız sınırı koruması
+
                 await interaction.client.rest.post(
                     Routes.webhookMessage(interaction.applicationId, interaction.token),
                     {
                         body: {
                             content: icerik,
-                            flags: 0, // 0 = Herkese Açık
-                            allowed_mentions: { parse: ['users', 'roles', 'everyone'] } // Etiketlerin çalışması için
+                            flags: 0, // 0 = Herkese Açık (Public) Zorlaması
+                            allowed_mentions: { parse: ['users', 'roles', 'everyone'] }
                         }
                     }
                 );
             } catch (err) {
-                // Eğer Discord "Hoop dur" derse devam et
-                console.log("Hız sınırına takıldı, devam ediliyor...");
+                // Eğer kanal tamamen kilitliyse Discord burada durdurur
+                break;
             }
         }
     }
