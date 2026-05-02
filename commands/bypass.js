@@ -1,57 +1,62 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Reklam duvarlarını yıkan hibrit motor.')
+        .setDescription('En zorlu linkleri kırmak için 5 farklı motoru zorlar.')
         .addStringOption(o => o.setName('link').setDescription('Reklamlı link').setRequired(true)),
 
     async execute(interaction) {
         const url = interaction.options.getString('link');
         await interaction.deferReply({ ephemeral: true });
 
-        // Denenecek API'ler (Sırasıyla)
-        const apis = [
-            `https://api.bypass.city/bypass?url=${encodeURIComponent(url)}`,
-            `https://eth-api.vercel.app/api/bypass?url=${encodeURIComponent(url)}`,
-            `https://dlp.v3.api.bypass.vip/bypass?url=${encodeURIComponent(url)}`
+        // Agresif API Listesi (En güncel endpointler)
+        const engines = [
+            { name: 'City Engine', url: `https://api.bypass.city/bypass?url=${encodeURIComponent(url)}` },
+            { name: 'VIP Engine', url: `https://dlp.v3.api.bypass.vip/bypass?url=${encodeURIComponent(url)}` },
+            { name: 'Vercel Hybrid', url: `https://eth-api.vercel.app/api/bypass?url=${encodeURIComponent(url)}` },
+            { name: 'AdBypass Global', url: `https://adbypass.org/api/bypass?url=${encodeURIComponent(url)}` }
         ];
 
-        let result = null;
-        let success = false;
+        let finalLink = null;
+        let usedEngine = "";
 
-        for (const api of apis) {
+        for (const engine of engines) {
             try {
-                const res = await axios.get(api, { timeout: 8000 });
-                if (res.data && (res.data.result || res.data.bypassed)) {
-                    result = res.data.result || res.data.bypassed;
-                    success = true;
-                    break; // Bir tanesi çalıştıysa döngüden çık
+                const res = await axios.get(engine.url, { timeout: 10000 });
+                // API'lerin farklı yanıt formatlarını (result, bypassed, target) kontrol et
+                const data = res.data;
+                const found = data.result || data.bypassed || data.target || (data.query && data.query.result);
+                
+                if (found && found !== "fail" && !found.includes("leecher")) {
+                    finalLink = found;
+                    usedEngine = engine.name;
+                    break;
                 }
             } catch (e) {
-                continue; // Hata verirse bir sonrakini dene
+                continue; 
             }
         }
 
-        if (success) {
+        if (finalLink) {
             const embed = new EmbedBuilder()
-                .setTitle('💀 Bypass Successful! | Agresif Mode')
-                .setColor('#ff4747')
+                .setTitle('💀 System Cracked!')
+                .setColor('#ff0000')
+                .setThumbnail('https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJqZ3R4Z3R4Z3R4Z3R4/3o7TKMGpx56S5eN7JC/giphy.gif')
                 .addFields(
-                    { name: '💻 PC Result', value: `\`\`\`${result}\`\`\`` },
-                    { name: '📱 Mobile Result', value: `\`\`\`${result}\`\`\`` }
+                    { name: '🔓 Decrypted Link', value: `\`\`\`${finalLink}\`\`\`` },
+                    { name: '🛡️ Used Engine', value: `\`${usedEngine}\``, inline: true }
                 )
-                .setFooter({ text: 'Powered by Aras Bypass Engine' })
+                .setFooter({ text: 'Security measures bypassed by Aras Force-Engine' })
                 .setTimestamp();
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setLabel('Linke Git').setURL(result).setStyle(ButtonStyle.Link)
-            );
-
-            await interaction.editReply({ content: '', embeds: [embed], components: [row] });
+            await interaction.editReply({ embeds: [embed] });
         } else {
-            await interaction.editReply({ content: '❌ **Bütün motorlar denendi ama link kırılamadı.** Reklam duvarı çok güncel olabilir.' });
+            // Eğer hiçbir API çözemezse, manuel yönlendirme bilgisini döndür
+            await interaction.editReply({ 
+                content: '❌ **Kritik Hata:** Reklam duvarı tüm global API motorlarını blokladı. Bu link şu an manuel geçiş gerektiriyor veya link patlamış.' 
+            });
         }
     }
 };
