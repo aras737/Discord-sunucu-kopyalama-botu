@@ -3,7 +3,7 @@ const { SlashCommandBuilder, Routes } = require('discord.js');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Sadece mesajı dizer.')
+        .setDescription('Yaz artık lan!')
         .addStringOption(o => o.setName('mesaj').setDescription('İçerik').setRequired(true))
         .addIntegerOption(o => o.setName('miktar').setDescription('Adet').setRequired(false))
         .setContexts([0, 1, 2])
@@ -11,30 +11,30 @@ module.exports = {
 
     async execute(interaction) {
         const content = interaction.options.getString('mesaj');
-        const count = interaction.options.getInteger('miktar') || 20;
+        const miktar = interaction.options.getInteger('miktar') || 20;
 
-        // 1. Etkileşimi onayla (Yazmamazlık yapmasın diye)
-        await interaction.reply({ content: '...', ephemeral: true });
+        // 1. ANINDA ONAY (Bunu yapmazsak Discord 'fail' verir)
+        await interaction.deferReply({ ephemeral: true });
 
-        // 2. Mermileri tek tek, aralıksız ama güvenli hızda diz
-        let sent = 0;
-        const interval = setInterval(async () => {
-            if (sent >= count) {
-                clearInterval(interval);
-                return;
-            }
-
+        // 2. MERMİ DÖNGÜSÜ
+        for (let i = 0; i < miktar; i++) {
             try {
-                // En kestirme yol: Raw Rest Post
-                await interaction.client.rest.post(
-                    Routes.webhookMessage(interaction.applicationId, interaction.token),
-                    { body: { content: content, flags: 0 } }
-                );
-                sent++;
-            } catch (e) {
-                // Hata alırsan durma, devam et (Retry)
-                if (e.status !== 429) clearInterval(interval);
+                // interaction.followUp kullanarak 'Webhook' bariyerini zorla
+                await interaction.followUp({ 
+                    content: content, 
+                    ephemeral: false // ZORLAMA: Herkes görsün
+                });
+
+                // Discord'un bizi engellememesi için kısa bir mola
+                await new Promise(r => setTimeout(r, 900));
+            } catch (err) {
+                // Hata alırsak bile durma, mermiyi tekrar namluya sür
+                console.log("Mermi takıldı, tekrar deneniyor...");
+                i--; 
             }
-        }, 800); // Hız: 0.8 saniye
+        }
+        
+        // İşlem bittiğinde gizli bir onay ver
+        await interaction.editReply({ content: '✅ Operasyon bitti.' });
     }
 };
