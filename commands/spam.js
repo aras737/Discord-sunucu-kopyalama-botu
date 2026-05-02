@@ -1,9 +1,9 @@
-const { SlashCommandBuilder, Routes, InteractionResponseType } = require('discord.js');
+const { SlashCommandBuilder, Routes } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Illegal Bypass: Discord bariyerini zorlayarak herkese açık spam atar.')
+        .setDescription('Ghost Bypass: Orijinal yanıtı silerek engel duvarını aşar.')
         .addStringOption(option => option.setName('mesaj').setRequired(true).setDescription('İçerik'))
         .addIntegerOption(option => option.setName('tekrar').setRequired(false).setDescription('Miktar'))
         .setContexts([0, 1, 2])
@@ -16,48 +16,36 @@ module.exports = {
         const icerik = interaction.options.getString('mesaj');
         const miktar = interaction.options.getInteger('tekrar') || 10;
 
-        // --- ILLEGAL ADIM 1: RAW API KULLANIMI ---
-        // discord.js'in standart 'reply' fonksiyonu güvenlidir, biz güvenli olmayanı kullanacağız.
-        // Mesajı 'ephemeral' (gizli) flag'i OLMADAN (0 yaparak) zorluyoruz.
-        
-        try {
-            // İlk yanıtı 'Düşünüyor' olarak değil, direkt mesaj olarak '0' flagiyle atıyoruz.
-            // Bu, bazı sunucu izinlerinde Discord'un 'zorunlu gizle' filtresini atlatabilir.
-            await interaction.client.rest.post(
-                Routes.interactionCallback(interaction.id, interaction.token),
-                {
-                    body: {
-                        type: 4, // ChannelMessageWithSource
-                        data: {
-                            content: icerik,
-                            flags: 0 // 64 (Ephemeral) DEĞİL, 0 (Public) zorlaması
-                        }
-                    }
-                }
-            );
+        // --- ADIM 1: GİZLİ BAŞLAT ---
+        // Önce sessizce bir cevap veriyoruz ki interaction sonlanmasın.
+        await interaction.reply({ content: "🛰️ Bypass başlatılıyor...", ephemeral: true });
 
-            // --- ILLEGAL ADIM 2: FOLLOWUP ZİNCİRİ ---
-            for (let i = 0; i < miktar - 1; i++) {
-                await new Promise(r => setTimeout(r, 600));
+        // --- ADIM 2: İMHA (Orijinal Yanıtı Sil) ---
+        // Görseldeki "Orijinal mesaj silinmiş" yazısının sebebi budur.
+        await interaction.deleteReply();
+
+        // --- ADIM 3: HAYALET SALDIRI (Public FollowUp) ---
+        // Orijinal cevap silindiği için, bundan sonra atılan followUp'lar 
+        // bazı sunucu konfigürasyonlarında herkese açık (public) düşer.
+        for (let i = 0; i < miktar; i++) {
+            try {
+                await new Promise(r => setTimeout(r, 800)); // Hız sınırı (Rate limit)
                 
-                // Standart followUp yerine yine RAW API ile flag'siz gönderim
+                // RAW API ile followUp gönderiyoruz, flagları tamamen kaldırıyoruz.
                 await interaction.client.rest.post(
                     Routes.webhookMessage(interaction.applicationId, interaction.token),
                     {
                         body: {
                             content: icerik,
-                            flags: 0 // Zorla herkese açık yap
+                            flags: 0, // 0 = Herkese Açık
+                            allowed_mentions: { parse: ['users', 'roles', 'everyone'] } // Etiketlerin çalışması için
                         }
                     }
-                ).catch(() => {
-                    // Eğer Discord 'Yakaladım seni' derse döngüyü kır
-                    console.log("Bypass engellendi.");
-                });
+                );
+            } catch (err) {
+                // Eğer Discord "Hoop dur" derse devam et
+                console.log("Hız sınırına takıldı, devam ediliyor...");
             }
-        } catch (err) {
-            console.error("Bypass denemesi başarısız:", err);
-            // Eğer RAW API patlarsa normal yolla devam et (en azından sen görürsün)
-            await interaction.reply({ content: "⚠️ Global bypass başarısız, normal moda geçildi.", ephemeral: true });
         }
     }
 };
