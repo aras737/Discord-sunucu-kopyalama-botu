@@ -1,81 +1,128 @@
-const { Client } = require('discord.js-selfbot-v13');
-const http = require('http');
 require('dotenv').config();
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+const http = require('http');
 
-// 1. Gelişmiş İstemci Yapılandırması
+// --- BOT İZİNLERİ (INTENTS) ---
 const client = new Client({
-    checkUpdate: false,
-    patchVoice: true, // Ses kanallarına destek (isteğe bağlı)
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMembers
+    ]
 });
 
-// 2. Render Ayakta Tutma (Keep-Alive) ve Port Bağlama
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-        status: 'online',
-        uptime: process.uptime(),
-        bot_user: client.user ? client.user.tag : 'Bağlanıyor...'
-    }));
+client.commands = new Collection();
+client.slashCommands = [];
+
+// --- KOMUT YÜKLEME MERKEZİ ---
+const commandsPath = path.join(__dirname, 'commands');
+if (fs.existsSync(commandsPath)) {
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+    for (const file of commandFiles) {
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+
+        // Mesaj tabanlı komutlar (!kur gibi)
+        if (command.name) {
+            client.commands.set(command.name, command);
+        }
+
+        // Slash komutlar (/spam gibi)
+        if (command.data && command.data.name) {
+            client.commands.set(command.data.name, command);
+            client.slashCommands.push(command.data.toJSON());
+        }
+    }
+}
+
+// --- HAZIR OLMA & SLASH KAYDI ---
+client.once('ready', async () => {
+    console.log(`✅ ${client.user.tag} Aktif ve Tetikte!`);
+    
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+    try {
+        console.log("🔄 Slash komutları yenileniyor...");
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: client.slashCommands },
+        );
+        // Tırnak hatası (SyntaxError) vermemesi için çift tırnak kullanıldı!
+        console.log("✨ Komutlar Discord sistemine başarıyla çakıldı.");
+    } catch (error) {
+        console.error("❌ Kayıt hatası:", error);
+    }
 });
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`[SİSTEM] Sunucu ${PORT} portunda aktif.`);
-});
-
-// 3. Gelişmiş Hata Yönetimi (Botun Çökmesini Engeller)
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('[HATA] Yakalanmayan Reddetme:', reason);
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('[KRİTİK HATA] Uygulama Çökmesi Önlemek İçin Yakalandı:', err);
-});
-
-// 4. Bot Hazır Olduğunda
-client.on('ready', async () => {
-    console.log('--------------------------------------');
-    console.log(`[BOT] Giriş Başarılı: ${client.user.tag}`);
-    console.log(`[BİLGİ] ${client.guilds.cache.size} adet sunucuda aktif.`);
-    console.log('--------------------------------------');
-});
-
-// 5. Basit Kopyalama Komutu Taslağı (Örnek Mantık)
-client.on('messageCreate', async (message) => {
-    // Sadece siz yazdığınızda çalışır
-    if (message.author.id !== client.user.id) return;
-
-    if (message.content.startsWith('!kopyala')) {
-        const args = message.content.split(' ');
-        const hedefID = args[1]; // Kopyalanacak sunucu ID
-
-        if (!hedefID) return message.reply('Lütfen bir sunucu ID belirtin! Örn: !kopyala 123456789');
-
+// --- ETKİLEŞİM YÖNETİMİ (Slash & Buton & Menü) ---
+client.on('interactionCreate', async (interaction) => {
+    // 1. Slash Komutları
+    if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
         try {
-            const guild = client.guilds.cache.get(hedefID);
-            if (!guild) return message.reply('Sunucu bulunamadı!');
+            await command.execute(interaction);
+        } catch (error) {
+            console.error("Komut Hatası:", error);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ İşlem sırasında bir kopukluk oldu!', ephemeral: true });
+            }
+        }
+    }
 
-            console.log(`[İŞLEM] ${guild.name} sunucusu kopyalanıyor...`);
-            // Kopyalama fonksiyonlarını buraya ekleyebilirsin
-            message.reply(`✅ **${guild.name}** kopyalama işlemi başlatıldı.`);
+    // 2. Buton ve Menü Etkileşimleri (Destek Sistemi vb. için)
+    const supportCommand = client.commands.get('destek-kur');
+    if (supportCommand && supportCommand.interactionHandler) {
+        try {
+            await supportCommand.interactionHandler(interaction);
         } catch (err) {
-            console.error('[HATA] Kopyalama sırasında hata:', err);
+            // Arka plandaki küçük hataları yoksay
         }
     }
 });
 
-// 6. Güvenli Giriş Sistemi
-const TOKEN = process.env.TOKEN;
+// --- MESAJ KOMUTLARI (!kur vb. Prefix Sistemi) ---
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
 
-if (!TOKEN) {
-    console.error("[HATA] Ortam değişkeni 'TOKEN' bulunamadı!");
-    process.exit(1);
-}
+    const prefix = "!"; // Prefix buraya
+    if (!message.content.startsWith(prefix)) return;
 
-// Render'da bazen internet geç gelir, 2 saniye bekleyip giriş yapıyoruz
-setTimeout(() => {
-    client.login(TOKEN).catch(err => {
-        console.error("[GİRİŞ HATASI] Token geçersiz veya Discord IP engelledi!");
-        console.error(err.message);
-    });
-}, 2000);
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const commandName = prefix + args.shift().toLowerCase();
+
+    const command = client.commands.get(commandName);
+    if (command && command.execute) {
+        try {
+            await command.execute(message);
+        } catch (error) {
+            console.error(error);
+            message.reply("❌ Komut uygulanırken bir hata oluştu.");
+        }
+    }
+});
+
+// --- ANTİ-CRASH (BOTUN ÇÖKMESİNİ ENGELLER) ---
+process.on('unhandledRejection', (reason) => { console.log('🛑 Rejection:', reason); });
+process.on('uncaughtException', (err) => { console.log('🛑 Exception:', err); });
+
+// --- UPTIME / WEB SUNUCUSU (RENDER UYUMASIN DİYE) ---
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end("FORCES ACTIVE 24/7");
+});
+
+server.listen(process.env.PORT || 3000, () => {
+    console.log("🌐 Web Sunucusu Aktif.");
+    
+    // Her 5 dakikada bir Render'ı dürterek botun uykuya dalmasını engeller
+    setInterval(() => {
+        const url = `http://localhost:${process.env.PORT || 3000}`;
+        http.get(url).on('error', (e) => { console.log("Ping döngüsü çalışıyor."); });
+    }, 300000); 
+});
+
+client.login(process.env.DISCORD_BOT_TOKEN);
