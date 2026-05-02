@@ -1,10 +1,9 @@
-require('dotenv').config();
+require('dotenv').config(); // 'Require' düzeltildi
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
-// --- BOT İZİNLERİ (INTENTS) ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -35,94 +34,82 @@ if (fs.existsSync(commandsPath)) {
         if (command.data && command.data.name) {
             client.commands.set(command.data.name, command);
             client.slashCommands.push(command.data.toJSON());
+            console.log(`🚀 Slash Komutu Listeye Eklendi: ${command.data.name}`);
         }
     }
 }
 
 // --- HAZIR OLMA & SLASH KAYDI ---
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} Aktif ve Tetikte!`);
+    console.log(`✅ ${client.user.tag} Aktif!`);
     
+    // REST API'yi başlat
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+
     try {
-        console.log("🔄 Slash komutları yenileniyor...");
+        console.log("🔄 Slash komutları globale kaydediliyor...");
+        
+        // Komutları yükle (client.user.id hazır olduğu için Routes artık çalışır)
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: client.slashCommands },
         );
-        // Tırnak hatası (SyntaxError) vermemesi için çift tırnak kullanıldı!
-        console.log("✨ Komutlar Discord sistemine başarıyla çakıldı.");
+        
+        console.log("✨ Komutlar Discord API sistemine başarıyla çakıldı.");
     } catch (error) {
-        console.error("❌ Kayıt hatası:", error);
+        console.error("❌ Komut yükleme sırasında hata oluştu:", error);
     }
 });
 
-// --- ETKİLEŞİM YÖNETİMİ (Slash & Buton & Menü) ---
+// --- ETKİLEŞİM YÖNETİMİ ---
 client.on('interactionCreate', async (interaction) => {
-    // 1. Slash Komutları
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
+
         try {
             await command.execute(interaction);
         } catch (error) {
-            console.error("Komut Hatası:", error);
+            console.error(error);
             if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: '❌ İşlem sırasında bir kopukluk oldu!', ephemeral: true });
+                await interaction.reply({ content: '❌ Komut çalıştırılırken hata oluştu!', ephemeral: true });
             }
         }
     }
 
-    // 2. Buton ve Menü Etkileşimleri (Destek Sistemi vb. için)
+    // Destek sistemi handler'ı
     const supportCommand = client.commands.get('destek-kur');
     if (supportCommand && supportCommand.interactionHandler) {
         try {
             await supportCommand.interactionHandler(interaction);
-        } catch (err) {
-            // Arka plandaki küçük hataları yoksay
-        }
+        } catch (err) {}
     }
 });
 
-// --- MESAJ KOMUTLARI (!kur vb. Prefix Sistemi) ---
+// --- MESAJ KOMUTLARI ---
 client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+    if (message.author.bot || !message.content.startsWith("!")) return;
 
-    const prefix = "!"; // Prefix buraya
-    if (!message.content.startsWith(prefix)) return;
-
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = prefix + args.shift().toLowerCase();
+    const args = message.content.slice(1).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
 
     const command = client.commands.get(commandName);
-    if (command && command.execute) {
+    if (command && !command.data) { // Sadece mesaj komutlarını (slash olmayan) çalıştır
         try {
-            await command.execute(message);
+            await command.execute(message, args);
         } catch (error) {
             console.error(error);
-            message.reply("❌ Komut uygulanırken bir hata oluştu.");
         }
     }
 });
 
-// --- ANTİ-CRASH (BOTUN ÇÖKMESİNİ ENGELLER) ---
-process.on('unhandledRejection', (reason) => { console.log('🛑 Rejection:', reason); });
-process.on('uncaughtException', (err) => { console.log('🛑 Exception:', err); });
+// --- ANTI-CRASH & UPTIME ---
+process.on('unhandledRejection', e => console.log('🛑 Rejection:', e));
+process.on('uncaughtException', e => console.log('🛑 Exception:', e));
 
-// --- UPTIME / WEB SUNUCUSU (RENDER UYUMASIN DİYE) ---
-const server = http.createServer((req, res) => {
+http.createServer((req, res) => {
     res.writeHead(200);
-    res.end("FORCES ACTIVE 24/7");
-});
-
-server.listen(process.env.PORT || 3000, () => {
-    console.log("🌐 Web Sunucusu Aktif.");
-    
-    // Her 5 dakikada bir Render'ı dürterek botun uykuya dalmasını engeller
-    setInterval(() => {
-        const url = `http://localhost:${process.env.PORT || 3000}`;
-        http.get(url).on('error', (e) => { console.log("Ping döngüsü çalışıyor."); });
-    }, 300000); 
-});
+    res.end("FORCES ACTIVE");
+}).listen(process.env.PORT || 3000);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
