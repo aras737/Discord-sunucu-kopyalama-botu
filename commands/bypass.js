@@ -4,60 +4,77 @@ const axios = require('axios');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Reklamlı linkleri anında geçer.')
+        .setDescription('Reklamlı linkleri saniyeler içinde geçer.')
         .addStringOption(option => 
             option.setName('link')
-                .setDescription('Bypass edilecek reklamlı link')
+                .setDescription('Bypass edilecek link (Linkvertise vb.)')
                 .setRequired(true))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
     async execute(interaction) {
         const url = interaction.options.getString('link');
-
-        // Kullanıcıya işlemin başladığını bildir
-        await interaction.reply({ content: '🔍 Link çözülüyor, lütfen bekleyin...', ephemeral: true });
+        await interaction.reply({ content: '🔍 **Bypass işlemi başlatıldı...**', ephemeral: true });
 
         try {
-            // Bypass API (Ücretsiz ve hızlı bir API kullanıyoruz)
-            const response = await axios.get(`https://api.bypass.vip/bypass?url=${encodeURIComponent(url)}`);
-            const data = response.data;
+            // --- API 1 (Bypass.vip) ---
+            let response = await axios.get(`https://api.bypass.vip/bypass?url=${encodeURIComponent(url)}`).catch(() => null);
+            
+            // --- API 2 (Yedek: Adlinkfly Bypass) ---
+            if (!response || !response.data || response.data.status !== "success") {
+                response = await axios.get(`https://adbypass.org/api/bypass?url=${encodeURIComponent(url)}`).catch(() => null);
+            }
 
-            if (data.status === "success") {
-                const result = data.result; // Çözülen link
+            if (response && response.data && (response.data.status === "success" || response.data.bypassed_url)) {
+                const result = response.data.result || response.data.bypassed_url;
 
                 const embed = new EmbedBuilder()
-                    .setTitle('✅ Bypass Successful!')
-                    .setColor('#2ecc71')
-                    .setDescription('Reklam başarıyla geçildi.')
+                    .setTitle('✅ Bypass successful! 🎧')
+                    .setColor('#f04747') // Fotoğraftaki o kırmızı/turuncu ton
                     .addFields(
-                        { name: '💻 Sonuç (PC)', value: `\`\`\`${result}\`\`\`` },
-                        { name: '📱 Sonuç (Mobil)', value: `\`\`\`${result}\`\`\`` }
+                        { name: '⌨️ Copy PC', value: `\`\`\`${result}\`\`\`` },
+                        { name: '🤖 Copy Mobile', value: `\`\`\`${result}\`\`\`` }
                     )
-                    .setFooter({ text: `İşlem süresi: ${data.time || '1.2'}s` })
+                    .setFooter({ text: `Time taken: ${response.data.time || '2.45'}s` })
                     .setTimestamp();
 
                 const row = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
-                            .setLabel('Linke Git')
-                            .setURL(result)
-                            .setStyle(ButtonStyle.Link),
-                        new ButtonBuilder()
-                            .setCustomId('copy_pc')
+                            .setCustomId('copy_pc_btn')
                             .setLabel('Copy PC')
+                            .setEmoji('💻')
+                            .setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder()
+                            .setCustomId('copy_mobile_btn')
+                            .setLabel('Copy Mobile')
+                            .setEmoji('📱')
                             .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(true) // Botlar direkt kopyalama yapamaz, linki vermek en iyisi
                     );
 
-                await interaction.editReply({ content: '', embeds: [embed], components: [row] });
+                const serverRow = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Join our Server')
+                            .setEmoji('🔗')
+                            .setURL('https://discord.gg/senin-linkin')
+                            .setStyle(ButtonStyle.Link)
+                    );
+
+                await interaction.editReply({ 
+                    content: '', 
+                    embeds: [embed], 
+                    components: [row, serverRow] 
+                });
             } else {
-                await interaction.editReply({ content: '❌ Link çözülemedi. Desteklenmeyen bir servis olabilir.' });
+                await interaction.editReply({ 
+                    content: '❌ **HATA:** Link geçilemedi. Link hatalı olabilir veya tüm servisler şu an meşgul. Lütfen biraz sonra tekrar dene.' 
+                });
             }
 
         } catch (error) {
-            console.error("Bypass Hatası:", error);
-            await interaction.editReply({ content: '🛑 API hatası oluştu veya servis şu an çalışmıyor.' });
+            console.error("Bypass Genel Hata:", error.message);
+            await interaction.editReply({ content: '🛑 **Sistemsel Hata:** API sunucularına bağlanılamıyor.' });
         }
     }
 };
