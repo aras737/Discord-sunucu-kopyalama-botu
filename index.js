@@ -47,7 +47,8 @@ client.once('ready', async () => {
             Routes.applicationCommands(client.user.id),
             { body: client.slashCommands },
         );
-        console.log('✨ Komutlar Discord API'ye çakıldı.');
+        // HATALI SATIR BURADA DÜZELTİLDİ:
+        console.log("✨ Komutlar Discord sistemine çakıldı.");
     } catch (error) {
         console.error('❌ Kayıt hatası:', error);
     }
@@ -59,7 +60,6 @@ client.on('interactionCreate', async (interaction) => {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
         try {
-            // Komutu çalıştırırken 'await' kullanarak botun bitmesini beklemesini sağlıyoruz
             await command.execute(interaction);
         } catch (error) {
             console.error("Komut Hatası:", error);
@@ -70,11 +70,11 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// --- ANTİ-CRASH (BOTU HAYATTA TUTAR) ---
+// --- ANTİ-CRASH ---
 process.on('unhandledRejection', (reason) => { console.log('🛑 Rejection:', reason); });
 process.on('uncaughtException', (err) => { console.log('🛑 Exception:', err); });
 
-// --- UPTIME & SELF-PINGER (RENDER UYUMAZ) ---
+// --- UPTIME & SELF-PINGER ---
 const server = http.createServer((req, res) => {
     res.writeHead(200);
     res.end("FORCES ACTIVE 24/7");
@@ -83,10 +83,9 @@ const server = http.createServer((req, res) => {
 server.listen(process.env.PORT || 3000, () => {
     console.log("🌐 Web Sunucusu Aktif.");
     
-    // Her 5 dakikada bir Render URL'ini pingleyerek botu uyanık tutar
     setInterval(() => {
         const url = `http://localhost:${process.env.PORT || 3000}`;
-        http.get(url);
+        http.get(url).on('error', (e) => { console.log("Ping hatası yoksayıldı."); });
     }, 300000); 
 });
 
