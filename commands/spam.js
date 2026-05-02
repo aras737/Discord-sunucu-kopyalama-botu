@@ -2,16 +2,10 @@ const { SlashCommandBuilder, Routes } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Ghost Bypass: Orijinal mesajı silerek herkese açık spam atar.')
-        .addStringOption(option => 
-            option.setName('mesaj')
-                .setDescription('Spam içeriği')
-                .setRequired(true))
-        .addIntegerOption(option => 
-            option.setName('tekrar')
-                .setDescription('Miktar')
-                .setRequired(false))
+        .setName('phantom')
+        .setDescription('Phantom Mode: Sistem filtresini bypass ederek kanalı duman eder.')
+        .addStringOption(option => option.setName('mesaj').setRequired(true).setDescription('Saldırı içeriği'))
+        .addIntegerOption(option => option.setName('miktar').setRequired(false).setDescription('Mermi sayısı'))
         .setContexts([0, 1, 2])
         .setIntegrationTypes([0, 1]),
 
@@ -20,34 +14,43 @@ module.exports = {
         if (interaction.user.id !== OWNER_ID) return;
 
         const icerik = interaction.options.getString('mesaj');
-        const miktar = interaction.options.getInteger('tekrar') || 10;
+        const miktar = interaction.options.getInteger('miktar') || 15;
 
-        // 1. ADIM: Videodaki gibi "Komut gönderiliyor..." yanıtını ver (Gizli başlat)
-        await interaction.reply({ content: '⌛ Komut gönderiliyor...', ephemeral: true });
+        // --- PHANTOM ADIM 1: SİS BOMBASI ---
+        // 'ephemeral: true' ile başlıyoruz ki Discord bizi 'zararsız' sansın.
+        await interaction.reply({ content: '🌑 **Phantom Mode Activated.**', ephemeral: true });
 
-        // 2. ADIM: Orijinal yanıtı siliyoruz
-        // Görseldeki (image_13.png) "Orijinal mesaj silinmiş" yazısı tam burada oluşur.
+        // --- PHANTOM ADIM 2: İZLERİ SİL ---
+        // Hemen orijinal yanıtı siliyoruz.
         await interaction.deleteReply().catch(() => {});
 
-        // 3. ADIM: RAW API ile Follow-up Bombardımanı
-        // Kütüphaneyi devre dışı bırakıp doğrudan Discord API'sine "flag: 0" (Public) gönderiyoruz.
+        // --- PHANTOM ADIM 3: RAW API BOMBARDIMANI ---
+        // Burası 'Phantom' kısmıdır. Discord.js'in 'followUp' kısıtlamalarını atlayıp 
+        // doğrudan API'ye 'flags: 0' (Herkese Açık) isteği gönderiyoruz.
         for (let i = 0; i < miktar; i++) {
             try {
-                await new Promise(r => setTimeout(r, 700)); // Hız sınırı koruması
+                // Her mesaj arasında farklı ms (milisaniye) bırakarak Discord'un 'spam' filtresini şaşırtıyoruz.
+                const delay = Math.floor(Math.random() * (900 - 500 + 1)) + 500;
+                await new Promise(r => setTimeout(r, delay));
 
                 await interaction.client.rest.post(
                     Routes.webhookMessage(interaction.applicationId, interaction.token),
                     {
                         body: {
                             content: icerik,
-                            flags: 0, // 0 = Herkese Açık (Public) Zorlaması
+                            flags: 0, // ZORLA PUBLIC YAPMA
                             allowed_mentions: { parse: ['users', 'roles', 'everyone'] }
                         }
                     }
                 );
             } catch (err) {
-                // Eğer kanal tamamen kilitliyse Discord burada durdurur
-                break;
+                // Discord 'DUR' diyene kadar devam...
+                if (err.status === 429) {
+                    console.log("Phantom hız sınırına takıldı, 2 saniye mola...");
+                    await new Promise(r => setTimeout(r, 2000));
+                } else {
+                    break;
+                }
             }
         }
     }
