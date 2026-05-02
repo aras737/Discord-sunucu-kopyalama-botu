@@ -1,51 +1,49 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const puppeteer = require('puppeteer');
+const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
+const axios = require('axios');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Kendi motorumuzla reklamlı linkleri geçer.')
-        .addStringOption(o => o.setName('link').setDescription('Reklamlı link').setRequired(true))
-        .setContexts([0, 1, 2])
-        .setIntegrationTypes([0, 1]),
+        .setDescription('PlatoBoost, Fluxus ve Linkvertise linklerini geçer.')
+        .addStringOption(option => 
+            option.setName('link')
+                .setDescription('Bypass edilecek link')
+                .setRequired(true)),
 
     async execute(interaction) {
-        const url = interaction.options.getString('link');
-        await interaction.reply({ content: '⚙️ **Kendi motorum başlatılıyor, reklamlar taranıyor...**', ephemeral: true });
+        const link = interaction.options.getString('link');
+        const endpoint = "http://45.90.13.151:6041"; // Örnekteki API adresi
+        const box = "```";
 
-        let browser;
+        // Desteklenmeyen link kontrolü
+        if (!link.includes("platoboost.com") && !link.includes("flux.li") && !link.includes("linkvertise.com")) {
+            return interaction.reply({ content: "❌ Bu link desteklenmiyor! Desteklenenler: PlatoBoost, Fluxus, Linkvertise.", ephemeral: true });
+        }
+
+        await interaction.deferReply(); // İşlem uzun sürebilir, Discord'a "bekle" diyoruz
+
         try {
-            // Tarayıcıyı başlat (Render uyumlu ayarlar)
-            browser = await puppeteer.launch({
-                headless: "new",
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
+            const response = await axios.get(`${endpoint}/?url=${encodeURIComponent(link)}`);
+            const json = response.data;
 
-            const page = await browser.newPage();
-            // Reklam servisinin bot olduğunu anlamaması için kullanıcı taklidi yap
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+            if (json.status === "success") {
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ Bypass Başarılı!')
+                    .setColor(0x00ff00)
+                    .setTimestamp();
 
-            // Linke git
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+                // API'den gelen veriye göre embed içeriğini doldur
+                if (json.key) embed.addFields({ name: 'Anahtar (Key):', value: `${box}${json.key}${box}` });
+                if (json.target) embed.addFields({ name: 'Hedef Link:', value: `${json.target}` });
+                if (json.time) embed.addFields({ name: 'Süre:', value: `${box}${json.time}${box}`, inline: true });
 
-            // BURASI ÖNEMLİ: Her reklam servisinin tıklama algoritması farklıdır.
-            // Örnek olarak sayfa başlığını ve yönlendiği son URL'yi alalım
-            const finalUrl = page.url();
-
-            const embed = new EmbedBuilder()
-                .setTitle('✅ Bypass İşlemi Tamam!')
-                .setColor('#00ff00')
-                .addFields({ name: '🔗 Hedef Link', value: `\`\`\`${finalUrl}\`\`\`` })
-                .setFooter({ text: 'Kendi Motorumuz Tarafından Çözüldü' })
-                .setTimestamp();
-
-            await interaction.editReply({ content: '', embeds: [embed] });
-
+                await interaction.editReply({ embeds: [embed] });
+            } else {
+                await interaction.editReply({ content: `❌ API Hatası: ${json.message || "Bypass edilemedi."}` });
+            }
         } catch (error) {
-            console.error("Bypass Hatası:", error);
-            await interaction.editReply({ content: '❌ Kendi motorumuz bu linki şu an çözemedi. Reklam duvarı çok güçlü.' });
-        } finally {
-            if (browser) await browser.close();
+            console.error(error);
+            await interaction.editReply({ content: "🛑 API şu an çevrimdışı veya yanıt vermiyor." });
         }
     }
 };
