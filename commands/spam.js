@@ -1,47 +1,41 @@
-const { SlashCommandBuilder, Routes } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('spam')
-        .setDescription('Herkesin gorebilecegi seri mesaj.')
-        .addStringOption(o => o.setName('mesaj').setDescription('Icerik').setRequired(true))
-        .addIntegerOption(o => o.setName('miktar').setDescription('Adet').setRequired(false))
-        .setContexts([0, 1, 2])
-        .setIntegrationTypes([0, 1]),
+        .setDescription('Belirlediğiniz kullanıcıya özelden mesaj yağdırır.')
+        .addUserOption(o => o.setName('hedef').setDescription('Spam atılacak kullanıcı').setRequired(true))
+        .addStringOption(o => o.setName('mesaj').setDescription('Gönderilecek metin').setRequired(true))
+        .addIntegerOption(o => o.setName('miktar').setDescription('Kaç adet gönderilsin?').setRequired(true)),
 
     async execute(interaction) {
-        const msg = interaction.options.getString('mesaj');
-        const count = interaction.options.getInteger('miktar') || 20;
+        const hedef = interaction.options.getUser('hedef');
+        const mesaj = interaction.options.getString('mesaj');
+        const miktar = interaction.options.getInteger('miktar');
 
-        // 1. ADIM: ILK YANITI GIZLI VER (Kirmizi hata cikmasin diye)
-        await interaction.reply({ content: 'Saldırı baslatildi kanka...', ephemeral: true });
+        // İlk yanıtı verelim ki Discord "cevap vermedi" demesin
+        await interaction.reply({ content: `🚀 ${hedef.tag} kullanıcısına ${miktar} adet mesaj gönderimi başlıyor...`, ephemeral: true });
 
-        // 2. ADIM: ASIL MESAJLARI HERKESE AÇIK GÖNDER
-        let i = 0;
-        const interval = setInterval(async () => {
-            if (i >= count) {
-                clearInterval(interval);
-                return;
-            }
+        let gönderilen = 0;
 
+        for (let i = 0; i < miktar; i++) {
             try {
-                // Buradaki 'flags: 0' çok önemli! 
-                // Bu sayede "Sadece sen görebilirsin" yazısı kalkar.
-                await interaction.client.rest.post(
-                    Routes.webhookMessage(interaction.applicationId, interaction.token),
-                    { 
-                        body: { 
-                            content: msg, 
-                            flags: 0 // 0 = Herkes Görür, 64 = Sadece Sen Görürsün
-                        } 
-                    }
-                );
-                i++;
-            } catch (err) {
-                // Eğer burada hata veriyorsa sunucu User App mesajlarını BLOKLAMIŞTIR.
-                console.log("Mesaj gonderilemedi, muhtemelen kanal izni kapali.");
-                clearInterval(interval);
+                // Mesajı özelden (DM) gönder
+                await hedef.send(mesaj);
+                gönderilen++;
+
+                // Discord'un seni hemen banlamaması için her mesaj arasına 1 saniye boşluk koyuyoruz.
+                // Eğer "illegal" olsun dersen bu süreyi 500ms yapabilirsin ama risk artar.
+                await new Promise(r => setTimeout(r, 1000)); 
+
+            } catch (error) {
+                console.error(`${hedef.tag} kullanıcısına DM gönderilemedi:`, error.message);
+                // Eğer DM kapalıysa veya ban yediysen döngüyü kır
+                break;
             }
-        }, 850);
+        }
+
+        // İşlem bittiğinde bildirim gönder
+        await interaction.followUp({ content: `✅ Spam tamamlandı! Başarıyla gönderilen: ${gönderilen}/${miktar}`, ephemeral: true });
     }
 };
