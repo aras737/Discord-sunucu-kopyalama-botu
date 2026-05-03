@@ -2,43 +2,45 @@ const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('yam')
-        .setDescription('Hedef kullanıcıya mesaj yağmuru başlatır.')
-        .addUserOption(o => o.setName('hedef').setDescription('Kime yazılacak?').setRequired(true))
-        .addStringOption(o => o.setName('mesaj').setDescription('Ne yazılacak?').setRequired(true))
-        .addIntegerOption(o => o.setName('adet').setDescription('Kaç kere yazılacak?').setRequired(true)),
+        .setName('spam')
+        .setDescription('Kullanıcıya özelden (DM) seri mesaj gönderir.')
+        .addUserOption(o => o.setName('hedef').setDescription('Mesaj yağmuruna tutulacak kişi').setRequired(true))
+        .addStringOption(o => o.setName('mesaj').setDescription('Gönderilecek metin').setRequired(true))
+        .addIntegerOption(o => o.setName('miktar').setDescription('Kaç adet gönderilsin?').setRequired(true)),
 
     async execute(interaction) {
+        // 1. ADIM: Discord'un 3 saniye sınırını deferReply ile aşıyoruz.
+        // Bu sayede "Bilinmeyen Etkileşim" hatası almazsın.
+        await interaction.deferReply({ ephemeral: true });
+
         const hedef = interaction.options.getUser('hedef');
         const mesaj = interaction.options.getString('mesaj');
-        const adet = interaction.options.getInteger('adet');
+        const miktar = interaction.options.getInteger('miktar');
 
-        // Ghost Mode: Filtreleri delmek için her harf arasına görünmez boşluk ekle
-        const bypassMesaj = mesaj.split('').join('\u200b');
+        // Filtreleri delmek için harf aralarına görünmez karakter ekliyoruz
+        const ghostMesaj = mesaj.split('').join('\u200b');
+        let sayac = 0;
 
-        await interaction.reply({ 
-            content: `🔥 **Yam yazma işlemi başladı:** ${hedef.tag} hedefine ${adet} mesaj gönderiliyor...`, 
-            ephemeral: true 
-        });
+        try {
+            for (let i = 0; i < miktar; i++) {
+                // Mesaj gönderimi
+                await hedef.send(ghostMesaj);
+                sayac++;
 
-        for (let i = 0; i < adet; i++) {
-            try {
-                // Mesajı gönder
-                await hedef.send(bypassMesaj);
-                
-                // Hız Ayarı (Kritik): 
-                // Discord seni "Robot" diye banlamasın diye araya 0.8 saniye koydum.
-                // Eğer çok risk almak istersen 500 yapabilirsin.
-                await new Promise(r => setTimeout(r, 800)); 
-            } catch (err) {
-                console.error("Mesaj gönderilemedi:", err.message);
-                break; // Hata (DM kapalıysa vb.) döngüden çık
+                // Rate limit (ban) yememek için 1 saniye bekleme
+                await new Promise(r => setTimeout(r, 1000));
             }
-        }
 
-        await interaction.followUp({ 
-            content: `✅ **İşlem Tamam:** ${hedef.tag} kullanıcısına yam yazma bitti.`, 
-            ephemeral: true 
-        });
+            // 2. ADIM: İşlem bitince yanıtı güncelliyoruz
+            await interaction.editReply({ 
+                content: `✅ **İşlem Tamam:** ${hedef.tag} kişisine ${sayac} mesaj başarıyla iletildi.` 
+            });
+
+        } catch (error) {
+            // "İzinler Eksik" hatasını burada yakalıyoruz
+            await interaction.editReply({ 
+                content: `❌ **Hata:** Mesaj gönderilemedi. (DM kapalı olabilir veya Discord bloklamış olabilir).` 
+            });
+        }
     }
 };
