@@ -1,67 +1,56 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
+const { 
+    SlashCommandBuilder, 
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle, 
+    ActionRowBuilder 
+} = require('discord.js');
+
+// Bekleme sürelerini hafızada tutmak için Map
+const cooldowns = new Map();
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Siteye girer, reklamları atlar ve keyi çeker.')
-        .addStringOption(o => o.setName('link').setDescription('Reklamlı link').setRequired(true)),
+        .setDescription('Reklamlı linkleri geçer ve anahtarınızı (key) getirir.'),
 
     async execute(interaction) {
-        const url = interaction.options.getString('link');
+        const userId = interaction.user.id;
+        const now = Date.now();
+        const cooldownAmount = 60 * 1000; // 60 saniye bekleme süresi
 
-        // 1. ADIM: Discord'a "Bekle, işlem uzun sürecek" diyoruz (Zaman aşımını engeller)
-        await interaction.deferReply({ ephemeral: true });
-
-        const browser = await puppeteer.launch({
-            headless: "new",
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        });
-
-        try {
-            const page = await browser.newPage();
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
-
-            // 2. ADIM: Siteye giriş ve agresif bekleme
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-
-            // PlatoBoost/Linkvertise geçiş butonlarını tetikle
-            await page.evaluate(async () => {
-                const btns = Array.from(document.querySelectorAll('button, a'));
-                const target = btns.find(b => 
-                    b.innerText.toLowerCase().includes('free access') || 
-                    b.innerText.toLowerCase().includes('get key')
-                );
-                if (target) target.click();
-            });
-
-            // Reklamların geçilmesi için 8 saniye zorunlu bekleme
-            await new Promise(r => setTimeout(r, 8000)); 
-
-            // 3. ADIM: Key'i yakala
-            const pageText = await page.evaluate(() => document.body.innerText);
-            const keyMatch = pageText.match(/[a-zA-Z0-9]{15,45}/); 
-            const finalKey = keyMatch ? keyMatch[0] : "Key bulunamadı veya site henüz yönlendirmedi.";
-
-            const embed = new EmbedBuilder()
-                .setTitle('🔓 Bypass Başarılı')
-                .setColor('#00ff00')
-                .addFields(
-                    { name: '🔑 Alınan Key', value: `\`\`\`${finalKey}\`\`\`` },
-                    { name: '🌐 Hedef URL', value: `[Linke Git](${page.url()})` }
-                )
-                .setFooter({ text: 'Aethelgard Agresif Motor' });
-
-            // 4. ADIM: interaction.reply yerine editReply kullanıyoruz (deferReply kullandığımız için)
-            await interaction.editReply({ embeds: [embed] });
-
-        } catch (error) {
-            console.error("Bypass Hatası:", error);
-            await interaction.editReply({ content: '❌ **Hata:** Tarayıcı motoru siteyi geçemedi veya RAM doldu.' });
-        } finally {
-            await browser.close();
+        // 1. COOLDOWN KONTROLÜ (Videodaki hata mesajı)
+        if (cooldowns.has(userId)) {
+            const expirationTime = cooldowns.get(userId) + cooldownAmount;
+            if (now < expirationTime) {
+                const timeLeft = (expirationTime - now) / 1000;
+                return interaction.reply({ 
+                    content: `❌ | Please wait ${timeLeft.toFixed(1)} more second(s) before using the bypass command.`, 
+                    ephemeral: true 
+                });
+            }
         }
-    }
+
+        // Cooldown'ı başlat
+        cooldowns.set(userId, now);
+        setTimeout(() => cooldowns.delete(userId), cooldownAmount);
+
+        // 2. MODAL (FORM) OLUŞTURMA
+        const modal = new ModalBuilder()
+            .setCustomId('bypassModal')
+            .setTitle('Zen Bypass');
+
+        const urlInput = new TextInputBuilder()
+            .setCustomId('urlInput')
+            .setLabel("Bypass edilecek URL'yi girin")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('https://auth.platorelay.com/...')
+            .setRequired(true);
+
+        const firstActionRow = new ActionRowBuilder().addComponents(urlInput);
+        modal.addComponents(firstActionRow);
+
+        // Modalı kullanıcıya göster
+        await interaction.showModal(modal);
+    },
 };
