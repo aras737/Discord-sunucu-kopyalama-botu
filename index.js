@@ -6,12 +6,14 @@ const {
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const axios = require('axios'); // GERÇEK BYPASS İÇİN LAZIM
+const axios = require('axios'); // <-- GERÇEK İŞLEMİ BU YAPIYOR
 
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.DirectMessages
     ]
 });
@@ -19,7 +21,7 @@ const client = new Client({
 client.commands = new Collection();
 client.slashCommands = [];
 
-// Komut Yükleme Mantığı (Senin Mevcut Yapın)
+// 1. KOMUTLARI YÜKLE
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -34,73 +36,82 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
+// 2. HAZIR OLMA VE SLASH KAYDI
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} SAHADA VE GERÇEK BYPASS AKTİF!`);
+    console.log(`✅ ${client.user.tag} Gerçek Modda Aktif!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: client.slashCommands });
     } catch (error) { console.error(error); }
 });
 
+// 3. ETKİLEŞİM YÖNETİMİ
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (command) await command.execute(interaction);
     }
 
-    // --- GERÇEK BYPASS MODAL YANITI ---
+    // --- BURASI GERÇEK BYPASS'IN ÇALIŞTIĞI YER ---
     if (interaction.isModalSubmit() && interaction.customId === 'bypassModal') {
         const url = interaction.fields.getTextInputValue('urlInput');
         
-        // Kullanıcıya işlemin başladığını göster
+        // Kullanıcıya "Bekle, linki çözüyorum" diyoruz
         await interaction.deferReply({ ephemeral: false });
 
         try {
-            /* 
-               2026'nın en stabil bypass API'sini kullanıyoruz.
-               Not: Bazı API'ler günlük limit koyabilir. Eğer 'api.bypass.vip' 
-               yanıt vermezse alternatif olarak 'api.ethone.live' denenebilir.
-            */
-            const apiUrl = `https://api.bypass.vip/bypass?url=${encodeURIComponent(url)}`;
-            const response = await axios.get(apiUrl);
+            // GERÇEK API İSTEĞİ: api.bypass.vip (veya elindeki başka bir sağlam API)
+            // encodeURIComponent kullanarak linkin bozulmasını önlüyoruz
+            const response = await axios.get(`https://api.bypass.vip/bypass?url=${encodeURIComponent(url)}`);
+            
+            // API'den gelen veriyi alıyoruz (API yapısına göre .result veya .key olabilir)
+            const result = response.data.result || response.data.key;
 
-            // API'den gelen gerçek veri (Status check)
-            if (response.data.status === "success") {
-                const realKey = response.data.result; // Gerçek çözülen link veya key
-
+            if (result) {
                 const embed = new EmbedBuilder()
                     .setTitle('✅ Bypass Success')
                     .setColor(0x2f3136)
-                    .setDescription(`Your link has been successfully bypassed!\n\n**Result:**\n\`\`\`${realKey}\`\`\``)
-                    .setTimestamp()
-                    .setFooter({ text: 'Zen Bypass System • 2026' });
+                    .setDescription(`Link başarıyla çözüldü! İşte gerçek sonucun:\n\n\`\`\`${result}\`\`\``)
+                    .setTimestamp();
 
                 const buttons = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('result').setLabel('Success').setStyle(ButtonStyle.Success).setDisabled(true),
-                    new ButtonBuilder().setLabel('Go to Result').setStyle(ButtonStyle.Link).setURL(realKey.startsWith('http') ? realKey : 'https://google.com'),
-                    new ButtonBuilder().setCustomId('server').setLabel('Support Server').setStyle(ButtonStyle.Secondary)
+                    new ButtonBuilder().setCustomId('res').setLabel('Başarılı').setStyle(ButtonStyle.Success).setDisabled(true),
+                    new ButtonBuilder().setLabel('Sonuca Git').setStyle(ButtonStyle.Link).setURL(result.startsWith('http') ? result : 'https://google.com')
                 );
 
                 await interaction.editReply({ embeds: [embed], components: [buttons] });
             } else {
-                throw new Error("API could not bypass this link.");
+                throw new Error("API boş döndü.");
             }
 
         } catch (error) {
-            console.error("Bypass Error:", error.message);
-            
-            const errorEmbed = new EmbedBuilder()
-                .setTitle('❌ Bypass Failed')
-                .setColor(0xff4b4b)
-                .setDescription(`Maalesef bu link çözülemedi.\n\n**Sebep:** Link geçersiz olabilir veya site koruması çok güçlü.\n**Link:** \`${url}\``)
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [errorEmbed] });
+            console.error("Hata Detayı:", error.message);
+            await interaction.editReply({ 
+                content: `❌ **Bypass Başarısız!**\nSebep: API bu linki şu an çözemiyor veya link geçersiz.\nLink: \`${url}\`` 
+            });
         }
+    }
+
+    // Mevcut destek sistemi handler'ın
+    const supportCmd = client.commands.get('destek-kur');
+    if (supportCmd && supportCmd.interactionHandler) {
+        try { await supportCmd.interactionHandler(interaction); } catch (err) {}
     }
 });
 
-// Anti-Crash & Uptime (Senin Mevcut Yapın)
+// 4. MESAJ TABANLI KOMUTLAR (!kur vb.)
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.content.startsWith("!")) return;
+    const args = message.content.slice(1).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
+    const command = client.commands.get(commandName);
+    if (command && !command.data) {
+        try { await command.execute(message, args); } catch (e) { console.log(e); }
+    }
+});
+
+// 5. UPTIME & ANTI-CRASH
 process.on('unhandledRejection', e => console.log('🛑 Hata:', e));
 http.createServer((req, res) => { res.writeHead(200); res.end("REAL SYSTEM ONLINE"); }).listen(process.env.PORT || 3000);
+
 client.login(process.env.DISCORD_BOT_TOKEN);
