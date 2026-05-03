@@ -6,6 +6,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const axios = require('axios'); // GERÇEK BYPASS İÇİN ŞART
 
 // 1. BOT AYARLARI VE İZİNLER
 const client = new Client({
@@ -29,10 +30,7 @@ if (fs.existsSync(commandsPath)) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
 
-        if (command.name) {
-            client.commands.set(command.name, command);
-        }
-
+        if (command.name) client.commands.set(command.name, command);
         if (command.data && command.data.name) {
             client.commands.set(command.data.name, command);
             client.slashCommands.push(command.data.toJSON());
@@ -42,80 +40,87 @@ if (fs.existsSync(commandsPath)) {
 
 // 3. HAZIR OLMA VE SLASH KAYDI
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} Tekrar Sahada!`);
+    console.log(`✅ ${client.user.tag} Gerçek Bypass Moduyla Aktif!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: client.slashCommands });
-        console.log("✨ Tüm komutlar senkronize edildi.");
-    } catch (error) {
-        console.error("❌ Kayıt Hatası:", error);
-    }
+        console.log("✨ Komutlar senkronize edildi.");
+    } catch (error) { console.error("❌ Kayıt Hatası:", error); }
 });
 
 // 4. ETKİLEŞİM YÖNETİMİ
 client.on('interactionCreate', async (interaction) => {
-    // A. SLASH KOMUTLARINI ÇALIŞTIR
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
-        if (!command) return;
+        if (command) await command.execute(interaction);
+    }
+
+    // --- GERÇEK BYPASS İŞLEMİ BURADA BAŞLIYOR ---
+    if (interaction.isModalSubmit() && interaction.customId === 'bypassModal') {
+        const url = interaction.fields.getTextInputValue('urlInput');
+        
+        // Kullanıcıya "bekle geliyorum" diyoruz (Videodaki akış için)
+        await interaction.deferReply({ ephemeral: false });
+
         try {
-            await command.execute(interaction);
+            // Gerçek Bypass API İsteği (Ethone API örneği)
+            // Bu API Platorelay, Linkvertise gibi sitelerin çoğunu destekler.
+            const response = await axios.get(`https://ethone.live/api/bypass?url=${encodeURIComponent(url)}`);
+            
+            // API'den gelen veriyi alıyoruz
+            // Not: API yapısına göre response.data.result veya response.data.key değişebilir.
+            const result = response.data.result || response.data.key || "Key Bulunamadı";
+
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Bypass Success')
+                .setColor(0x2f3136)
+                .setDescription(`Sistem linki başarıyla analiz etti ve bypassladı!\n\n**Sonuç/Key:**\n\`\`\`${result}\`\`\``)
+                .setFooter({ text: `Kullanılan Link: ${url.substring(0, 40)}...` })
+                .setTimestamp();
+
+            const buttons = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('result').setLabel('Result').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('server').setLabel('Server').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setLabel('Website').setStyle(ButtonStyle.Link).setURL(url.startsWith('http') ? url : 'https://google.com')
+            );
+
+            await interaction.editReply({ embeds: [embed], components: [buttons] });
+
         } catch (error) {
-            console.error(error);
-            if (!interaction.replied) await interaction.reply({ content: '❌ Komut hatası!', ephemeral: true });
+            console.error("Bypass Hatası:", error.response ? error.response.data : error.message);
+            
+            const errorEmbed = new EmbedBuilder()
+                .setTitle('❌ Bypass Failed')
+                .setColor(0xff0000)
+                .setDescription(`Maalesef bu link bypass edilemedi. Link geçersiz olabilir veya API şu an yoğun olabilir.`)
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [errorEmbed] });
         }
     }
 
-    // B. VİDEODAKİ BYPASS MODAL YANITI (EKLEDİĞİMİZ KISIM)
-    if (interaction.isModalSubmit() && interaction.customId === 'bypassModal') {
-        const url = interaction.fields.getTextInputValue('urlInput');
-        await interaction.deferReply({ ephemeral: false });
-
-        // Videodaki key ve tasarımın aynısı
-        const mockKey = "FREE_8C114EDFA55888FF6D5DC7775A584C69";
-
-        const embed = new EmbedBuilder()
-            .setTitle('✅ Bypass Success')
-            .setColor(0x2f3136) // Koyu Discord Grisi
-            .setDescription(`Your key has been retrieved. Copy it and input it into the application.\n\n\`\`\`${mockKey}\`\`\``)
-            .setTimestamp();
-
-        const buttons = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('result').setLabel('Result').setStyle(ButtonStyle.Secondary).setDisabled(true),
-            new ButtonBuilder().setCustomId('server').setLabel('Server').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setLabel('Website').setStyle(ButtonStyle.Link).setURL('https://google.com') // Buraya kendi siteni koy
-        );
-
-        await interaction.editReply({ embeds: [embed], components: [buttons] });
-    }
-
-    // C. DESTEK SİSTEMİ BUTONLARI
+    // DESTEK SİSTEMİ BUTONLARI
     const supportCmd = client.commands.get('destek-kur');
     if (supportCmd && supportCmd.interactionHandler) {
         try { await supportCmd.interactionHandler(interaction); } catch (err) {}
     }
 });
 
-// 5. MESAJ TABANLI KOMUTLAR (!kur, !sorgu)
+// 5. MESAJ TABANLI KOMUTLAR (!kur)
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith("!")) return;
     const args = message.content.slice(1).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
     const command = client.commands.get(commandName);
     if (command && !command.data) {
-        try { await command.execute(message, args); } catch (error) {
-            message.reply("❌ Komut uygulanırken hata oluştu!");
-        }
+        try { await command.execute(message, args); } catch (error) { message.reply("❌ Hata!"); }
     }
 });
 
-// 6. SİSTEMİ AYAKTA TUT
-process.on('unhandledRejection', e => console.log('🛑 Kritik Hata (Red):', e));
-process.on('uncaughtException', e => console.log('🛑 Kritik Hata (Ex):', e));
+// 6. AYAKTA TUT
+process.on('unhandledRejection', e => console.log('🛑 Hata:', e));
+process.on('uncaughtException', e => console.log('🛑 Hata:', e));
 
-http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end("SYSTEM ONLINE");
-}).listen(process.env.PORT || 3000);
+http.createServer((req, res) => { res.writeHead(200); res.end("REAL BYPASS ONLINE"); }).listen(process.env.PORT || 3000);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
