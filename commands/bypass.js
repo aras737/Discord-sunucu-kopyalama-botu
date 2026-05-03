@@ -4,10 +4,10 @@ const axios = require('axios');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Linkin yönlendirmelerini analiz eder (reklam atlatmaz).')
+        .setDescription('Linkteki parametreleri analiz eder.')
         .addStringOption(o =>
             o.setName('link')
-             .setDescription('İncelenecek URL')
+             .setDescription('URL')
              .setRequired(true)
         ),
 
@@ -16,33 +16,34 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const response = await axios.get(url, {
-                maxRedirects: 10, // yönlendirmeleri takip et
-                validateStatus: null,
+            const res = await axios.get(url, {
+                maxRedirects: 10,
                 timeout: 10000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0'
-                }
+                validateStatus: null
             });
 
-            const finalUrl = response.request?.res?.responseUrl || url;
-            const status = response.status;
+            const finalUrl = res.request?.res?.responseUrl || url;
+
+            const parsed = new URL(finalUrl);
+            const params = [...parsed.searchParams.entries()];
+
+            let paramText = params.length
+                ? params.map(([k, v]) => `**${k}** = \`${v}\``).join('\n')
+                : 'Parametre yok';
 
             const embed = new EmbedBuilder()
-                .setTitle('🔎 Link Analizi')
-                .setColor('#00aaff')
+                .setTitle('🔍 URL Analiz')
+                .setColor('#00ffaa')
                 .addFields(
-                    { name: '🔗 Girdi URL', value: `\`\`\`${url}\`\`\`` },
-                    { name: '🎯 Son URL', value: `\`\`\`${finalUrl}\`\`\`` },
-                    { name: '📡 HTTP Status', value: `\`${status}\``, inline: true }
-                )
-                .setFooter({ text: 'Redirect analyzer (legal use)' });
+                    { name: '🎯 Final URL', value: `\`\`\`${finalUrl}\`\`\`` },
+                    { name: '🔑 Parametreler', value: paramText }
+                );
 
             await interaction.editReply({ embeds: [embed] });
 
-        } catch (err) {
+        } catch (e) {
             await interaction.editReply({
-                content: '❌ Link analiz edilemedi. URL hatalı veya site erişimi engelliyor olabilir.'
+                content: '❌ URL çözülemedi.'
             });
         }
     }
