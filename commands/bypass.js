@@ -6,17 +6,17 @@ puppeteer.use(StealthPlugin());
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('PlatoBoost ve diğer zorlu linkleri gerçek tarayıcıyla geçer.')
-        .addStringOption(o => o.setName('link').setDescription('Bypass edilecek link').setRequired(true)),
+        .setDescription('Siteye girer, reklamları atlar ve keyi çeker.')
+        .addStringOption(o => o.setName('link').setDescription('Reklamlı link').setRequired(true)),
 
     async execute(interaction) {
         const url = interaction.options.getString('link');
-        
-        // Botun "düşünüyor..." kısmında takılmaması için ilk yanıtı veriyoruz
+
+        // 1. ADIM: Discord'a "Bekle, işlem uzun sürecek" diyoruz (Zaman aşımını engeller)
         await interaction.deferReply({ ephemeral: true });
 
         const browser = await puppeteer.launch({
-            headless: "new", // Render'da sorun çıkmaması için yeni headless modu
+            headless: "new",
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
 
@@ -24,50 +24,42 @@ module.exports = {
             const page = await browser.newPage();
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
-            // 1. Siteye Git
+            // 2. ADIM: Siteye giriş ve agresif bekleme
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-            // 2. PlatoBoost "Checkpoint" Atlatma
-            // Genelde "LootLabs" veya "Free Access" butonları olur
+            // PlatoBoost/Linkvertise geçiş butonlarını tetikle
             await page.evaluate(async () => {
-                const delay = ms => new Promise(res => setTimeout(res, ms));
-                
-                // Sayfadaki tüm butonları tara ve reklam geçişlerini tetikle
-                const buttons = Array.from(document.querySelectorAll('button, a'));
-                const skipBtn = buttons.find(b => 
+                const btns = Array.from(document.querySelectorAll('button, a'));
+                const target = btns.find(b => 
                     b.innerText.toLowerCase().includes('free access') || 
                     b.innerText.toLowerCase().includes('get key')
                 );
-                
-                if (skipBtn) skipBtn.click();
+                if (target) target.click();
             });
 
-            // Bekleme süresi (Reklamların yüklenmesi için)
-            await new Promise(r => setTimeout(r, 7000));
+            // Reklamların geçilmesi için 8 saniye zorunlu bekleme
+            await new Promise(r => setTimeout(r, 8000)); 
 
-            // 3. Key'i veya Hedef URL'yi Yakala
+            // 3. ADIM: Key'i yakala
             const pageText = await page.evaluate(() => document.body.innerText);
-            const currentUrl = page.url();
-
-            // Eğer Key sayfada yazıyorsa onu bulalım
-            const keyMatch = pageText.match(/[a-zA-Z0-9]{15,45}/); // Genelde 15+ karakterlik bir koddur
-            const result = keyMatch ? keyMatch[0] : (currentUrl !== url ? currentUrl : "Key henüz oluşmadı, tekrar dene.");
+            const keyMatch = pageText.match(/[a-zA-Z0-9]{15,45}/); 
+            const finalKey = keyMatch ? keyMatch[0] : "Key bulunamadı veya site henüz yönlendirmedi.";
 
             const embed = new EmbedBuilder()
-                .setTitle('🔓 PlatoBoost Bypass Tamamlandı')
-                .setColor('#5865F2')
+                .setTitle('🔓 Bypass Başarılı')
+                .setColor('#00ff00')
                 .addFields(
-                    { name: '🔑 Alınan Key', value: `\`\`\`${result}\`\`\`` },
-                    { name: '🌐 Son Konum', value: `[Sayfaya Git](${currentUrl})` }
+                    { name: '🔑 Alınan Key', value: `\`\`\`${finalKey}\`\`\`` },
+                    { name: '🌐 Hedef URL', value: `[Linke Git](${page.url()})` }
                 )
-                .setFooter({ text: 'Aethelgard Sunucu Kopyalayıcı | Güçlü Mod' })
-                .setTimestamp();
+                .setFooter({ text: 'Aethelgard Agresif Motor' });
 
+            // 4. ADIM: interaction.reply yerine editReply kullanıyoruz (deferReply kullandığımız için)
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
             console.error("Bypass Hatası:", error);
-            await interaction.editReply({ content: '❌ **Hata:** Site botu engelledi veya Render RAM sınırına ulaştı.' });
+            await interaction.editReply({ content: '❌ **Hata:** Tarayıcı motoru siteyi geçemedi veya RAM doldu.' });
         } finally {
             await browser.close();
         }
