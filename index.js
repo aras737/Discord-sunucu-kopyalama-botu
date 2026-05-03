@@ -1,24 +1,26 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, Collection, REST, Routes, 
+    ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle 
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const axios = require('axios'); // Bypass API istekleri için
 
-// 1. BOT AYARLARI VE İZİNLER
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // !kur ve !sorgu için şart!
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
 client.commands = new Collection();
 client.slashCommands = [];
 
-// 2. KOMUTLARI TARA VE YÜKLE (KIRIKLARI ONARIR)
+// 1. KOMUTLARI YÜKLE
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -26,87 +28,113 @@ if (fs.existsSync(commandsPath)) {
         const filePath = path.join(commandsPath, file);
         const command = require(filePath);
 
-        // Prefix Komutları (!kur, !sorgu vb.)
-        if (command.name) {
-            client.commands.set(command.name, command);
-            console.log(`📡 Prefix Komutu Yüklendi: !${command.name}`);
-        }
-
-        // Slash Komutları (/spam, /destek-kur vb.)
+        if (command.name) client.commands.set(command.name, command);
         if (command.data && command.data.name) {
             client.commands.set(command.data.name, command);
             client.slashCommands.push(command.data.toJSON());
-            console.log(`🚀 Slash Komutu Yüklendi: /${command.data.name}`);
         }
     }
 }
 
-// 3. HAZIR OLMA VE SLASH KAYDI
+// 2. HAZIR OLMA VE SLASH KAYDI
 client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} Tekrar Sahada!`);
+    console.log(`✅ ${client.user.tag} Aktif!`);
     
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
     try {
-        console.log("🔄 Slash komutları globale basılıyor...");
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: client.slashCommands },
         );
-        console.log("✨ Tüm komutlar başarıyla senkronize edildi.");
+        console.log("✨ Slash komutları senkronize edildi.");
     } catch (error) {
         console.error("❌ Kayıt Hatası:", error);
     }
 });
 
-// 4. ETKİLEŞİM YÖNETİMİ (Slash & Destek Butonları)
+// 3. ETKİLEŞİM YÖNETİMİ (VİDEODAKİ SİSTEMİN KALBİ)
 client.on('interactionCreate', async (interaction) => {
-    // Slash Komutlarını Çalıştır
+    
+    // A. SLASH KOMUTLARI (Örn: /bypass)
     if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error(error);
-            if (!interaction.replied) await interaction.reply({ content: '❌ Komut hatası!', ephemeral: true });
+        if (interaction.commandName === 'bypass') {
+            // Videodaki Modal'ı (Formu) Oluştur
+            const modal = new ModalBuilder()
+                .setCustomId('bypassModal')
+                .setTitle('Zen Bypass');
+
+            const urlInput = new TextInputBuilder()
+                .setCustomId('urlInput')
+                .setLabel("Bypass edilecek URL'yi girin")
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('https://auth.platorelay.com/...')
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(urlInput));
+            await interaction.showModal(modal);
+        } else {
+            const command = client.commands.get(interaction.commandName);
+            if (command) await command.execute(interaction);
         }
     }
 
-    // DESTEK SİSTEMİ BUTONLARI (destek-kur.js içindeki handler)
+    // B. MODAL GÖNDERİLDİĞİNDE (VİDEODAKİ GİRİŞ EKRANI)
+    if (interaction.isModalSubmit() && interaction.customId === 'bypassModal') {
+        const url = interaction.fields.getTextInputValue('urlInput');
+        
+        await interaction.deferReply({ ephemeral: false });
+
+        try {
+            // Bypass API Simülasyonu (Buraya kendi API linkini koymalısın)
+            // const response = await axios.get(`https://api.bypass.vip/bypass?url=${url}`);
+            // const key = response.data.key;
+            const mockKey = "FREE_8C114EDFA55888FF6D5DC7775A584C69"; // Videodaki örnek key
+
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Bypass Success')
+                .setColor(0x2f3136)
+                .setDescription(`Your key has been retrieved. Copy it and input it into the application.\n\n\`\`\`${mockKey}\`\`\``)
+                .setTimestamp();
+
+            const buttons = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('result').setLabel('Result').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('server').setLabel('Server').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setLabel('Website').setStyle(ButtonStyle.Link).setURL('https://google.com')
+            );
+
+            await interaction.editReply({ embeds: [embed], components: [buttons] });
+
+        } catch (error) {
+            console.error(error);
+            await interaction.editReply({ content: '❌ Bypass işlemi başarısız oldu.' });
+        }
+    }
+
+    // C. DESTEK SİSTEMİ HANDLER (Senin mevcut yapın)
     const supportCmd = client.commands.get('destek-kur');
     if (supportCmd && supportCmd.interactionHandler) {
-        try {
-            await supportCmd.interactionHandler(interaction);
-        } catch (err) { /* Sessiz hata yönetimi */ }
+        try { await supportCmd.interactionHandler(interaction); } catch (err) {}
     }
 });
 
-// 5. MESAJ TABANLI KOMUTLAR (!kur, !sorgu)
+// 4. MESAJ TABANLI KOMUTLAR (!kur vb.)
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith("!")) return;
-
     const args = message.content.slice(1).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
-
-    // Sadece prefix tabanlı (slash olmayan) komutları tetikle
     const command = client.commands.get(commandName);
     if (command && !command.data) {
-        try {
-            await command.execute(message, args);
-        } catch (error) {
-            console.error(error);
-            message.reply("❌ Komut uygulanırken hata oluştu!");
-        }
+        try { await command.execute(message, args); } catch (e) { message.reply("❌ Hata!"); }
     }
 });
 
-// 6. SİSTEMİ AYAKTA TUT (Anti-Crash & Uptime)
-process.on('unhandledRejection', e => console.log('🛑 Kritik Hata (Red):', e));
-process.on('uncaughtException', e => console.log('🛑 Kritik Hata (Ex):', e));
+// 5. UPTIME & ANTI-CRASH
+process.on('unhandledRejection', e => console.log('🛑 Red Hatası:', e));
+process.on('uncaughtException', e => console.log('🛑 Exception Hatası:', e));
 
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end("SYSTEM ONLINE");
+    res.end("ZEN BYPASS SYSTEM ONLINE");
 }).listen(process.env.PORT || 3000);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
