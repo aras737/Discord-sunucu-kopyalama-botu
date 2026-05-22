@@ -1,5 +1,5 @@
 const { 
-    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
+    SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
     ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType 
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
@@ -8,13 +8,19 @@ const { Client: SelfClient } = require('discord.js-selfbot-v13');
 const jitter = (ms = 700) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
 
 module.exports = {
-    name: '!kur',
-    async execute(message) {
-        const OWNER_ID = "1389930042200559706";
-        if (message.author.id !== OWNER_ID) return;
+    data: new SlashCommandBuilder()
+        .setName('kur')
+        .setDescription('Forces God Mode Klonlama panelini açar.'),
 
-        if (!message.client.kurListenerSet) {
-            message.client.on('interactionCreate', async (int) => {
+    async execute(interaction) {
+        const OWNER_ID = "1389930042200559706";
+        if (interaction.user.id !== OWNER_ID) {
+            return await interaction.reply({ content: "❌ Bu komutu sadece bot sahibi kullanabilir.", ephemeral: true });
+        }
+
+        // Ana index.js yerine dinleyiciyi komutun ilk tetiklendiği an tek seferlik kuruyoruz
+        if (!interaction.client.kurListenerSet) {
+            interaction.client.on('interactionCreate', async (int) => {
                 if (int.isButton() && int.customId === 'btn_god_clone') {
                     const modal = new ModalBuilder().setCustomId('modal_god_clone').setTitle('God Mode Klonlama');
                     modal.addComponents(
@@ -35,7 +41,7 @@ module.exports = {
                     await int.editReply("🌌 God Mode aktif edildi! İşlem detayları DM'den geliyor.");
                 }
             });
-            message.client.kurListenerSet = true;
+            interaction.client.kurListenerSet = true;
         }
 
         const embed = new EmbedBuilder()
@@ -55,7 +61,7 @@ module.exports = {
             new ButtonBuilder().setCustomId('btn_god_clone').setLabel('Her Şeyi Kopyala').setStyle(ButtonStyle.Success)
         );
 
-        await message.reply({ embeds: [embed], components: [row] });
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 };
 
@@ -113,7 +119,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             await owner.send("🎭 **Aşama 2 Bitti:** Rol hiyerarşisi ve temel sunucu ayarları aktarıldı.");
 
             // --- AŞAMA 3: KANALLAR VE GELİŞMİŞ AYARLAR ---
-            const channelMap = new Map(); // Kanalları eşleştirmek için (AFK/System için lazım)
+            const channelMap = new Map();
             const categories = src.channels.cache.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4).sort((a,b) => a.position - b.position);
 
             for (const cat of categories.values()) {
@@ -139,7 +145,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                             nsfw: child.nsfw || false,
                             bitrate: child.bitrate || 64000,
                             userLimit: child.userLimit || 0,
-                            rateLimitPerUser: child.rateLimitPerUser || 0, // Yavaş Mod
+                            rateLimitPerUser: child.rateLimitPerUser || 0,
                             permissionOverwrites: child.permissionOverwrites.cache.map(o => ({
                                 id: roleMap.get(o.id) || o.id,
                                 allow: o.allow, deny: o.deny, type: o.type
@@ -180,11 +186,9 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                     await trg.members.ban(ban.user.id, { reason: ban.reason || "Klonlama Aracı: Taşınan Ban" }).catch(() => {});
                     await jitter(300);
                 }
-            } catch (err) {
-                // Banları çekme yetkisi yoksa es geç
-            }
+            } catch (err) {}
 
-            await owner.send(`👑 **GOD MODE TAMAMLANDI!** Sunucu %100 oranında klonlandı.`);
+            await owner.send(`👑 **%100 Klonlama Tamamlandı!** Klon bot kapatılıyor.`);
             self.destroy();
 
         } catch (err) {
@@ -193,5 +197,5 @@ async function startGodModeClone(owner, token, srcId, trgId) {
         }
     });
 
-    self.login(token).catch(() => owner.send("❌ Token hatalı kanka!"));
+    self.login(token).catch(() => owner.send("❌ Girdiğin token geçersiz kanka!"));
 }
