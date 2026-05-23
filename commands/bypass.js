@@ -11,102 +11,108 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
-// Bekleme sürelerini hafızada tutmak için Map
 const cooldowns = new Map();
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bypass')
-        .setDescription('Delta ve PlatoRelay linklerini geçerek keyi getirir.'),
+        .setDescription('PlatoRelay ve Delta linklerini API kullanmadan, doğrudan tarayıcı ile çözer.'),
 
     async execute(interaction) {
         const userId = interaction.user.id;
         const now = Date.now();
-        const cooldownAmount = 30 * 1000; // 30 saniye bekleme süresi
+        const cooldownAmount = 10 * 1000; // Testleri rahat yapabilmen için 10 saniyeye çektim kanka
 
-        // 1. COOLDOWN KONTROLÜ
         if (cooldowns.has(userId)) {
             const expirationTime = cooldowns.get(userId) + cooldownAmount;
             if (now < expirationTime) {
                 const timeLeft = (expirationTime - now) / 1000;
                 return interaction.reply({ 
-                    content: `❌ | Please wait ${timeLeft.toFixed(1)} more second(s) before using the bypass command.`, 
+                    content: `❌ | Lütfen tekrar denemeden önce ${timeLeft.toFixed(1)} saniye bekleyin.`, 
                     ephemeral: true 
                 });
             }
         }
 
-        // Dinleyiciyi (Listener) sadece bir kez kuruyoruz
         if (!interaction.client.bypassListenerSet) {
             interaction.client.on('interactionCreate', async (int) => {
                 if (int.type === InteractionType.ModalSubmit && int.customId === 'bypassModal') {
                     
-                    // KANKA İŞTE BURASI: Butona basıldığı an senin loading emojin dönmeye başlayacak
+                    // Önce Discord etkileşim süresini donduruyoruz ve senin loading emojini basıyoruz
                     await int.deferReply({ ephemeral: true });
                     await int.editReply({ 
-                        content: `<a:loading:1507818079776935966> **Zen Engine: Siteye giriş yapılıyor, reklamlar manipüle ediliyor. Lütfen bekleyin...**` 
+                        content: `<a:loading:1507818079776935966> **Zen Engine: Harici API devre dışı bırakıldı. Yerel tarayıcı motoru ayağa kaldırılıyor...**` 
                     });
 
                     const url = int.fields.getTextInputValue('urlInput').trim();
 
-                    // Tarayıcıyı arka planda gizli modda başlatıyoruz
+                    // Kendi temiz Chrome instance'ımızı başlatıyoruz
                     const browser = await puppeteer.launch({
                         headless: "new",
-                        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+                        args: [
+                            '--no-sandbox', 
+                            '--disable-setuid-sandbox', 
+                            '--disable-dev-shm-usage',
+                            '--disable-blink-features=AutomationControlled'
+                        ]
                     });
 
                     try {
                         const page = await browser.newPage();
-                        // Bot engellerini aşmak için güncel User-Agent
                         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
-                        // Sayfaya git ve ağ trafiği sakinleşene kadar bekle
+                        // Sayfaya doğrudan giriş yapıyoruz
                         await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-                        // Sayfa yüklendiğinde loading mesajını güncelleyerek durum bildiriyoruz kanka
                         await int.editReply({ 
-                            content: `<a:loading:1507818079776935966> **Zen Engine: Delta/Plato duvarı geçiliyor, anahtar aranıyor...**` 
+                            content: `<a:loading:1507818079776935966> **Zen Engine: Sayfa analiz ediliyor, reklam kapıları bypass ediliyor...**` 
                         });
 
-                        // Delta ve Plato sayfalarındaki yönlendirme butonlarını tetikliyoruz
-                        await page.evaluate(async () => {
-                            const buttons = Array.from(document.querySelectorAll('button, a'));
-                            const targetBtn = buttons.find(b => 
+                        // Sayfadaki yönlendirme scriptlerini manipüle edip direkt anahtara ulaşmaya çalışıyoruz
+                        const finalKey = await page.evaluate(async () => {
+                            // Reklam duvarlarını ve bekleme sayaçlarını atlamak için window objelerini temizle
+                            if (window.checkpointData) {
+                                return window.checkpointData.key || null;
+                            }
+                            
+                            // Sayfa içindeki yaygın butonları tetikle
+                            const btns = Array.from(document.querySelectorAll('button, a'));
+                            const skipBtn = btns.find(b => 
                                 b.innerText.toLowerCase().includes('free access') || 
                                 b.innerText.toLowerCase().includes('get key') ||
                                 b.innerText.toLowerCase().includes('continue')
                             );
-                            if (targetBtn) targetBtn.click();
+                            if (skipBtn) skipBtn.click();
+                            
+                            return null;
                         });
 
-                        // İşlemlerin oturması için agresif bekleme süresi
-                        await new Promise(r => setTimeout(r, 8000));
+                        // Sayfanın yönlenmesi için 7 saniye jenerik bekleme
+                        await new Promise(r => setTimeout(r, 7000));
 
-                        // Sonuçları topla
                         const currentUrl = page.url();
                         const pageText = await page.evaluate(() => document.body.innerText);
 
-                        // Delta key formasyonunu regex ile yakala
-                        const keyMatch = pageText.match(/[a-zA-Z0-9]{15,45}/);
-                        const finalKey = keyMatch ? keyMatch[0] : null;
+                        // Kapanan API'nin yaptığı işi buradaki Regex deseniyle yerel olarak yapıyoruz
+                        const keyMatch = pageText.match(/[a-zA-Z0-9]{20,40}/) || currentUrl.match(/key=([^&]+)/);
+                        const resultKey = keyMatch ? (typeof keyMatch === 'string' ? keyMatch : keyMatch[0]) : null;
 
                         const embed = new EmbedBuilder()
-                            .setTitle('🔓 Zen Bypass: Delta Cracked!')
-                            .setColor('#00ffcc')
+                            .setTitle('🔓 Zen Yerel Bypass Sistemi')
+                            .setColor('#00ffb3')
                             .addFields(
-                                { name: '🔑 Alınan Key / Sonuç', value: `\`\`\`${finalKey || "Anahtar doğrudan metin olarak bulunamadı ama bypass tamam."}\`\`\`` },
-                                { name: '🔗 Yönlendirilen URL', value: `[Hedef Sayfaya Git](${currentUrl})` }
+                                { name: '🔑 Sonuç / Anahtar', value: `\`\`\`${resultKey || "Anahtar doğrudan metinde yakalanamadı, yönlendirilen sayfayı kontrol edin."}\`\`\`` },
+                                { name: '🌐 Yönlendirilen Son Adres', value: `[Bağlantıya Git](${currentUrl})` }
                             )
-                            .setFooter({ text: 'Delta Engine Bypass System' })
+                            .setFooter({ text: 'Kapatılan API\'lerden bağımsız yerel motor.' })
                             .setTimestamp();
 
-                        // İşlem bittiğinde loading mesajını kaldırıp sadece embed'i basıyoruz!
                         await int.editReply({ content: null, embeds: [embed] });
 
                     } catch (error) {
-                        console.error("Bypass İşlem Hatası:", error);
+                        console.error("Yerel Motor Hatası:", error);
                         await int.editReply({ 
-                            content: '❌ **Bypass Başarısız:** Delta koruması aşılamadı veya Render RAM limitine takıldı kanka.' 
+                            content: '❌ **Bypass Başarısız:** Tarayıcı motoru hedef sayfayı işleyemedi. Linkin güncelliğini kontrol edin.' 
                         });
                     } finally {
                         await browser.close();
@@ -116,18 +122,16 @@ module.exports = {
             interaction.client.bypassListenerSet = true;
         }
 
-        // Cooldown'ı aktif et
         cooldowns.set(userId, now);
         setTimeout(() => cooldowns.delete(userId), cooldownAmount);
 
-        // 2. MODAL (FORM) OLUŞTURMA VE GÖSTERME
         const modal = new ModalBuilder()
             .setCustomId('bypassModal')
-            .setTitle('Zen Bypass');
+            .setTitle('Zen Yerel Bypass');
 
         const urlInput = new TextInputBuilder()
             .setCustomId('urlInput')
-            .setLabel("Bypass edilecek URL'yi girin")
+            .setLabel("Bypass edilecek URL")
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('https://auth.platorelay.com/...')
             .setRequired(true);
@@ -135,7 +139,6 @@ module.exports = {
         const firstActionRow = new ActionRowBuilder().addComponents(urlInput);
         modal.addComponents(firstActionRow);
 
-        // Formu kullanıcıya fırlatıyoruz
         await interaction.showModal(modal);
     },
 };
