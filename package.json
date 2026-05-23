@@ -4,6 +4,7 @@
   "description": "Bypass and Server Copy Bot with Chrome Engine",
   "main": "index.js",
   "scripts": {
+    "build": "npm install && npx puppeteer browsers install chrome",
     "start": "node index.js"
   },
   "dependencies": {
