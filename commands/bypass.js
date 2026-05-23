@@ -22,7 +22,7 @@ module.exports = {
     async execute(interaction) {
         const userId = interaction.user.id;
         const now = Date.now();
-        const cooldownAmount = 30 * 1000; // Hızlı test için cooldown süresini 30 saniyeye çektim kanka
+        const cooldownAmount = 30 * 1000; // 30 saniye bekleme süresi
 
         // 1. COOLDOWN KONTROLÜ
         if (cooldowns.has(userId)) {
@@ -36,16 +36,20 @@ module.exports = {
             }
         }
 
-        // Dinleyiciyi (Listener) sadece bir kez kuruyoruz ki her basışta tetiklenip "Bilinmeyen Etkileşim" vermesin
+        // Dinleyiciyi (Listener) sadece bir kez kuruyoruz
         if (!interaction.client.bypassListenerSet) {
             interaction.client.on('interactionCreate', async (int) => {
                 if (int.type === InteractionType.ModalSubmit && int.customId === 'bypassModal') {
-                    // KANKA BURASI HAYATİ: Discord'a "işlem uzun sürecek, bekle" diyoruz
+                    
+                    // KANKA İŞTE BURASI: Butona basıldığı an senin loading emojin dönmeye başlayacak
                     await int.deferReply({ ephemeral: true });
+                    await int.editReply({ 
+                        content: `<a:loading:1507818079776935966> **Zen Engine: Siteye giriş yapılıyor, reklamlar manipüle ediliyor. Lütfen bekleyin...**` 
+                    });
 
                     const url = int.fields.getTextInputValue('urlInput').trim();
 
-                    // Tarayıcıyı arka planda başlatıyoruz
+                    // Tarayıcıyı arka planda gizli modda başlatıyoruz
                     const browser = await puppeteer.launch({
                         headless: "new",
                         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
@@ -53,56 +57,57 @@ module.exports = {
 
                     try {
                         const page = await browser.newPage();
-                        // Delta/PlatoRelay'in bot korumasını delmek için güncel Chrome User-Agent'ı
+                        // Bot engellerini aşmak için güncel User-Agent
                         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
                         // Sayfaya git ve ağ trafiği sakinleşene kadar bekle
                         await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-                        // Delta ve Plato sayfalarındaki yönlendirme butonlarını taklit edip tetikliyoruz
+                        // Sayfa yüklendiğinde loading mesajını güncelleyerek durum bildiriyoruz kanka
+                        await int.editReply({ 
+                            content: `<a:loading:1507818079776935966> **Zen Engine: Delta/Plato duvarı geçiliyor, anahtar aranıyor...**` 
+                        });
+
+                        // Delta ve Plato sayfalarındaki yönlendirme butonlarını tetikliyoruz
                         await page.evaluate(async () => {
-                            const delay = ms => new Promise(res => setTimeout(res, ms));
                             const buttons = Array.from(document.querySelectorAll('button, a'));
-                            
-                            // Delta / LootLabs geçişlerinde sık kullanılan tetikleyiciler
                             const targetBtn = buttons.find(b => 
                                 b.innerText.toLowerCase().includes('free access') || 
                                 b.innerText.toLowerCase().includes('get key') ||
                                 b.innerText.toLowerCase().includes('continue')
                             );
-                            
-                            if (targetBtn) {
-                                targetBtn.click();
-                            }
+                            if (targetBtn) targetBtn.click();
                         });
 
-                        // Reklam sisteminin ve checkpoint'lerin aşılması için 8 saniye zorunlu bekleme
+                        // İşlemlerin oturması için agresif bekleme süresi
                         await new Promise(r => setTimeout(r, 8000));
 
-                        // Sayfanın ulaştığı son URL ve metin içeriği
+                        // Sonuçları topla
                         const currentUrl = page.url();
                         const pageText = await page.evaluate(() => document.body.innerText);
 
-                        // Delta keyleri genelde uzun harf/rakam kombinasyonları olur, Regex ile tarıyoruz
+                        // Delta key formasyonunu regex ile yakala
                         const keyMatch = pageText.match(/[a-zA-Z0-9]{15,45}/);
                         const finalKey = keyMatch ? keyMatch[0] : null;
 
                         const embed = new EmbedBuilder()
                             .setTitle('🔓 Zen Bypass: Delta Cracked!')
                             .setColor('#00ffcc')
-                            .setThumbnail('https://i.imgur.com/wSTFkRM.png') // Delta tarzı bir imaj istersen değiştirebilirsin
                             .addFields(
-                                { name: '🔑 Alınan Key / Sonuç', value: `\`\`\`${finalKey || "Anahtar metinde doğrudan bulunamadı ama sayfa geçildi."}\`\`\`` },
+                                { name: '🔑 Alınan Key / Sonuç', value: `\`\`\`${finalKey || "Anahtar doğrudan metin olarak bulunamadı ama bypass tamam."}\`\`\`` },
                                 { name: '🔗 Yönlendirilen URL', value: `[Hedef Sayfaya Git](${currentUrl})` }
                             )
                             .setFooter({ text: 'Delta Engine Bypass System' })
                             .setTimestamp();
 
-                        await int.editReply({ embeds: [embed] });
+                        // İşlem bittiğinde loading mesajını kaldırıp sadece embed'i basıyoruz!
+                        await int.editReply({ content: null, embeds: [embed] });
 
                     } catch (error) {
                         console.error("Bypass İşlem Hatası:", error);
-                        await int.editReply({ content: '❌ **Bypass Başarısız:** Delta koruması aşılamadı veya Render RAM sınırına takıldı kanka.' });
+                        await int.editReply({ 
+                            content: '❌ **Bypass Başarısız:** Delta koruması aşılamadı veya Render RAM limitine takıldı kanka.' 
+                        });
                     } finally {
                         await browser.close();
                     }
