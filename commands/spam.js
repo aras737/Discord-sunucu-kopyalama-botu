@@ -1,50 +1,92 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, IntegrationType, InteractionContext } = require('discord.js');
+
+// Kullanıcıların notlarını geçici olarak tutacak bellek havuzu
+// (Bot kapandığında sıfırlanır, kalıcı olması için MongoDB veya Quick.db bağlanabilir)
+const notVeritabi = new Map();
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Mesaj gönderim modunu seçin ve her yerde kontrolü elinize alın.')
-        .addUserOption(o => o.setName('hedef').setDescription('Hedef kişi').setRequired(true))
-        .addStringOption(o => o.setName('mesaj').setDescription('Gönderilecek metin').setRequired(true))
-        .addStringOption(o => o.setName('mod')
-            .setDescription('Gönderim tarzı')
-            .setRequired(true)
-            .addChoices(
-                { name: '🚀 Hayvan Gibi (Tek Seferde Toplu)', value: 'toplu' },
-                { name: '🎯 Tekli (Ben Bastıkça At)', value: 'tekli' }
-            ))
-        .addIntegerOption(o => o.setName('miktar').setDescription('Sadece toplu mod için miktar girin (Tekli modda 1 adet gider)').setRequired(false)),
+        .setName('not')
+        .setDescription('Kişisel asistanınız: Notlarınızı her yerde güvenle yönetin.')
+        
+        // KULLANICI UYGULAMASI AYARLARI
+        .setIntegrationTypes([IntegrationType.UserInstall]) 
+        .setContexts([IntegrationContext.Guild, IntegrationContext.BotDM, IntegrationContext.PrivateChannel])
+        
+        // 1. ÖZELLİK: Not Ekleme Alt Komutu
+        .addSubcommand(sub => sub
+            .setName('ekle')
+            .setDescription('Profilinize yeni bir özel not kaydeder.')
+            .addStringOption(o => o.setName('icerik').setDescription('Not alacağınız metin').setRequired(true)))
+            
+        // 2. ÖZELLİK: Not Listeleme Alt Komutu
+        .addSubcommand(sub => sub
+            .setName('listele')
+            .setDescription('Sadece sizin görebileceğiniz şekilde tüm notlarınızı listeler.'))
+            
+        // 3. ÖZELLİK: Notları Temizleme Alt Komutu
+        .addSubcommand(sub => sub
+            .setName('temizle')
+            .setDescription('Profilinizdeki tüm notları kalıcı olarak siler.')),
 
     async execute(interaction) {
+        // Yanıtı gizli (ephemeral) yaparak sadece komutu yazanın görmesini sağlıyoruz
         await interaction.deferReply({ ephemeral: true });
 
-        const hedef = interaction.options.getUser('hedef');
-        const mesaj = interaction.options.getString('mesaj');
-        const mod = interaction.options.getString('mod');
-        const miktar = interaction.options.getInteger('miktar') || 1;
+        const altKomut = interaction.options.getSubcommand();
+        const userId = interaction.user.id;
 
-        // Filtre delme (Ghost Mode)
-        const ghostMesaj = mesaj.split('').join('\u200b');
+        // Kullanıcının veritabanında yeri yoksa boş bir liste tanımla
+        if (!notVeritabi.has(userId)) {
+            notVeritabi.set(userId, []);
+        }
+        const kullaniciNotlari = notVeritabi.get(userId);
 
-        try {
-            if (mod === 'tekli') {
-                // İstediğin zaman tek tek atmak için mod
-                await hedef.send(ghostMesaj);
-                await interaction.editReply({ content: `🎯 **Tekli Atış Başarılı:** ${hedef.tag} hedefine 1 adet mesaj gönderildi. İstediğin an komutu tekrarla!` });
-            } 
+        // ==================== NOT EKLEME MODULÜ ====================
+        if (altKomut === 'ekle') {
+            const icerik = interaction.options.getString('icerik');
             
-            else if (mod === 'toplu') {
-                // Önceki agresif toplu fırlatma modu
-                const spamHavuzu = [];
-                for (let i = 0; i < miktar; i++) {
-                    spamHavuzu.push(hedef.send(ghostMesaj).catch(() => {}));
-                }
-                await Promise.all(spamHavuzu);
-                await interaction.editReply({ content: `🚀 **Toplu Fırlatma Bitti:** ${hedef.tag} hedefine ${miktar} adet mesaj aynı anda üflendi!` });
+            // Kota Sınırı: Belleğin şişmesini önlemek için maksimum 5 not sınırı
+            if (kullaniciNotlari.length >= 5) {
+                return interaction.editReply({ 
+                    content: '❌ **Kota Doldu:** En fazla 5 adet not saklayabilirsiniz. Lütfen yenisini eklemek için bazılarını silin.' 
+                });
             }
 
-        } catch (error) {
-            await interaction.editReply({ content: `❌ **Hata:** Gönderim başarısız oldu (DM kapalı veya rate limit).` });
+            // Notu zaman damgasıyla birlikte ekle
+            const yeniNot = {
+                metin: icerik,
+                tarih: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+            };
+            
+            kullaniciNotlari.push(yeniNot);
+            return interaction.editReply({ 
+                content: `✅ **Not Kaydedildi:** "${icerik}" (Saat: ${yeniNot.tarih})\nBu nota istediğiniz sunucudan \`/not listele\` yazarak ulaşabilirsiniz.` 
+            });
+        }
+
+        // ==================== NOT LİSTELEME MODULÜ ====================
+        if (altKomut === 'listele') {
+            if (kullaniciNotlari.length === 0) {
+                return interaction.editReply({ content: '📭 **Profilinizde kayıtlı not bulunmuyor.** \`/not ekle\` ile ilk notunuzu yazın!' });
+            }
+
+            // Notları şık bir liste haline getir
+            const notListesi = kullaniciNotlari.map((n, index) => `**${index + 1}.** [${n.tarih}] ➜ ${n.metin}`).join('\n');
+            
+            return interaction.editReply({ 
+                content: `📝 **Kişisel Not Defteriniz (Toplam: ${kullaniciNotlari.length}/5):**\n\n${notListesi}\n\n*Bu liste tamamen size özeldir, diğer kullanıcılar göremez.*` 
+            });
+        }
+
+        // ==================== NOT TEMİZLEME MODULÜ ====================
+        if (altKomut === 'temizle') {
+            if (kullaniciNotlari.length === 0) {
+                return interaction.editReply({ content: '⚠️ Temizlenecek herhangi bir not bulunamadı.' });
+            }
+
+            notVeritabi.set(userId, []); // Kullanıcının dizisini sıfırla
+            return interaction.editReply({ content: '🧹 **Başarılı:** Profilinize ait tüm notlar temizlendi.' });
         }
     }
 };
