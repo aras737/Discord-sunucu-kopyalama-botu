@@ -21,11 +21,11 @@ module.exports = {
 
         const tip = interaction.options.getString('tip');
         const mesaj = interaction.options.getString('mesaj');
-        const miktar = Math.min(interaction.options.getInteger('miktar'), 50); // Hız sınırına takılmamak için max 50 limit
+        const miktar = Math.min(interaction.options.getInteger('miktar'), 50);
         const hedefKullanici = interaction.options.getUser('hedef_kullanici');
         const hedefKanal = interaction.options.getChannel('hedef_kanal');
 
-        // Discord filtrelerini esnetmek için görünmez karakter entegrasyonu
+        // Discord filtrelerine takılmamak için görünmez karakter ayrıştırması
         const temizMesaj = mesaj.split('').join('\u200b');
 
         try {
@@ -38,19 +38,18 @@ module.exports = {
                 for (let i = 0; i < miktar; i++) {
                     await hedefKullanici.send(temizMesaj).catch(() => {});
                     sendCount++;
-                    // Discord hız sınırlarına (Rate Limit) yakalanmamak için kısa bir es (gecikme) veriyoruz
                     await new Promise(resolve => setTimeout(resolve, 300));
                 }
                 
-                return await interaction.editReply({ content: `🚀 **DM Gönderimi Tamamlandı:** ${hedefKullanici.tag} kullanıcısına ${sendCount} adet mesaj başarıyla iletildi.` });
+                return await interaction.editReply({ content: `🚀 **DM Gönderimi Tamamlandı:** ${hedefKullanici.tag} kullanıcısına ${sendCount} adet mesaj iletildi.` });
             } 
             
             else if (tip === 'kanal') {
-                // Eğer kanal seçilmediyse komutun yazıldığı mevcut kanalı hedef alıyoruz
+                // KANKA HATANIN ÇÖZÜMÜ BURASI: Önce hedefKanal var mı diye bakıyoruz, yoksa interaction.channel kullanıyoruz
                 const kanal = hedefKanal || interaction.channel;
 
-                if (kanal.type !== ChannelType.GuildText) {
-                    return await interaction.editReply({ content: '❌ **Hata:** Seçilen kanal türü mesaj gönderimine uygun bir yazı kanalı değil.' });
+                if (!kanal || (kanal.type !== ChannelType.GuildText && kanal.type !== ChannelType.GuildVoice)) {
+                    return await interaction.editReply({ content: '❌ **Hata:** Seçilen alan mesaj gönderimine uygun bir metin kanalı değil.' });
                 }
 
                 let sendCount = 0;
@@ -60,11 +59,11 @@ module.exports = {
                     await new Promise(resolve => setTimeout(resolve, 300));
                 }
 
-                return await interaction.editReply({ content: `🚀 **Kanal Gönderimi Tamamlandı:** ${kanal.name} kanalına ${sendCount} adet mesaj başarıyla iletildi.` });
+                return await interaction.editReply({ content: `🚀 **Kanal Gönderimi Tamamlandı:** <#${kanal.id}> kanalına ${sendCount} adet mesaj iletildi.` });
             }
         } catch (error) {
             console.error("Gönderim hatası:", error);
-            await interaction.editReply({ content: `❌ **Hata:** İşlem gerçekleştirilirken yetki eksikliği veya sistemsel bir kısıtlamaya rastlandı.` });
+            await interaction.editReply({ content: `❌ **Hata:** İşlem gerçekleştirilirken bir sorun oluştu.` });
         }
     }
 };
