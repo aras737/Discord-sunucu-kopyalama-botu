@@ -10,13 +10,14 @@ module.exports = {
         .addIntegerOption(o => o.setName('miktar').setDescription('Gönderilecek mesaj sayısı').setRequired(true)),
 
     async execute(interaction) {
-        // Paneli sadece komutu yazanın görmesi için Ephemeral kalabilir, mesajlar herkesin göreceği şekilde atılacak
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const mesaj = interaction.options.getString('mesaj');
         const miktar = interaction.options.getInteger('miktar');
 
-        // Ekran görüntüsündeki "THE FORCES" kırmızı temalı şık embed tasarımı
+        // Benzersiz bir ID üreterek buton verilerinin karışmasını önlüyoruz kanka
+        const benzersizId = `forces_${interaction.id}`;
+
         const panelEmbed = new EmbedBuilder()
             .setColor('#ff0033')
             .setTitle('☄️ Abone Modu Aktif')
@@ -27,45 +28,54 @@ module.exports = {
                 { name: '⚙️ Gönderim Modu', value: '`Abone Ultra`', inline: true },
                 { name: '⏱️ Çekirdek Gecikme', value: '`100ms`', inline: true }
             )
-            .setImage('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000') // Buraya kendi afiş linkini koyabilirsin kanka
+            .setImage('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000')
             .setFooter({ text: 'Forces • Spam System | Güç Merkezi', iconURL: interaction.client.user.displayAvatarURL() })
             .setTimestamp();
 
-        // Tam ekran görüntüsündeki o "Başlat!" butonu
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('btn_start_forces_spam')
+                .setCustomId(benzersizId)
                 .setLabel('🚀 Başlat!')
-                .setStyle(ButtonStyle.Danger) // Kırmızı buton rengi
+                .setStyle(ButtonStyle.Danger)
         );
 
-        const response = await interaction.editReply({ embeds: [panelEmbed], components: [row] });
+        await interaction.editReply({ embeds: [panelEmbed], components: [row] });
 
-        // Butona basıldığında tetiklenecek mekanizma
-        if (!interaction.client.spamButtonListenerSet) {
-            interaction.client.on('interactionCreate', async (btnInteraction) => {
-                if (!btnInteraction.isButton() || btnInteraction.customId !== 'btn_start_forces_spam') return;
+        // KANKA KESİN ÇÖZÜM: Buton için özel bir toplayıcı (Collector) oluşturuyoruz, böylece veri asla kaybolmuyor
+        const filter = i => i.customId === benzersizId && i.user.id === interaction.user.id;
+        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
 
-                // Butona basıldığında durumu güncelle
-                await btnInteraction.reply({ 
-                    content: `⚡ **Forces Spam Sistemi:** \`${miktar}\` adet mesaj hedef alana fırlatılıyor...`, 
-                    flags: MessageFlags.Ephemeral 
-                });
-
-                const temizMesaj = mesaj.split('').join('\u200b');
-                const kanal = btnInteraction.channel;
-
-                if (kanal) {
-                    for (let i = 0; i < miktar; i++) {
-                        // Kanala mesajları sırayla gönderiyoruz
-                        await kanal.send(temizMesaj).catch(() => {});
-                        // Tam ekran görüntüsündeki gibi 100ms gecikme uyguluyoruz kanka
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    }
-                }
+        collector.on('collect', async (btnInteraction) => {
+            // İlk olarak alt yazıyı ekrana veriyoruz (Ekran görüntündeki yer)
+            await btnInteraction.reply({ 
+                content: `⚡ **Forces Spam Sistemi:** \`${miktar}\` adet mesaj hedef alana fırlatılıyor...`, 
+                flags: MessageFlags.Ephemeral 
             });
-            // Dinleyicinin mükerrer (üst üste) çalışmasını engellemek için sabitleme
-            interaction.client.spamButtonListenerSet = true;
-        }
+
+            // Discord filtrelerini bypass etmek için görünmez karakter
+            const temizMesaj = mesaj.split('').join('\u200b');
+            const kanal = btnInteraction.channel;
+
+            if (kanal) {
+                for (let i = 0; i < miktar; i++) {
+                    // Kanala asıl mesajı zorla gönderiyoruz kanka
+                    await kanal.send({ content: temizMesaj }).catch((err) => console.log("Mesaj basılamadı:", err));
+                    // 100ms çekirdek gecikme
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+        });
+
+        collector.on('end', async () => {
+            // 1 dakika sonra butonun süresi dolunca pasif yap kanka sunucuyu yormasın
+            const disabledRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(benzersizId)
+                    .setLabel('Süre Doldu!')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(true)
+            );
+            await interaction.editReply({ components: [disabledRow] }).catch(() => {});
+        });
     }
 };
