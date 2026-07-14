@@ -2,40 +2,45 @@ const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Belirlediğiniz kullanıcıya özelden mesaj yağdırır.')
-        .addUserOption(o => o.setName('hedef').setDescription('Spam atılacak kullanıcı').setRequired(true))
-        .addStringOption(o => o.setName('mesaj').setDescription('Gönderilecek metin').setRequired(true))
-        .addIntegerOption(o => o.setName('miktar').setDescription('Kaç adet gönderilsin?').setRequired(true)),
+        .setName('spamm')
+        .setDescription('Kullanıcı Uygulaması: Her yerde spam atmanızı sağlar.')
+        .addStringOption(option => 
+            option.setName('mesaj')
+                .setDescription('Gönderilecek içerik')
+                .setRequired(true))
+        .addIntegerOption(option => 
+            option.setName('tekrar')
+                .setDescription('Kaç adet gönderilsin? (Max: 20)')
+                .setRequired(false))
+        // --- KRİTİK AYARLAR ---
+        // 0: Guild, 1: DM, 2: Grup/Dış Sunucu (Botun olmadığı yerler)
+        .setContexts([0, 1, 2]) 
+        // 0: Guild Install, 1: User Install (Hesabına yükleme)
+        .setIntegrationTypes([0, 1]),
 
     async execute(interaction) {
-        const hedef = interaction.options.getUser('hedef');
-        const mesaj = interaction.options.getString('mesaj');
-        const miktar = interaction.options.getInteger('miktar');
-
-        // İlk yanıtı verelim ki Discord "cevap vermedi" demesin
-        await interaction.reply({ content: `🚀 ${hedef.tag} kullanıcısına ${miktar} adet mesaj gönderimi başlıyor...`, ephemeral: true });
-
-        let gönderilen = 0;
-
-        for (let i = 0; i < miktar; i++) {
-            try {
-                // Mesajı özelden (DM) gönder
-                await hedef.send(mesaj);
-                gönderilen++;
-
-                // Discord'un seni hemen banlamaması için her mesaj arasına 1 saniye boşluk koyuyoruz.
-                // Eğer "illegal" olsun dersen bu süreyi 500ms yapabilirsin ama risk artar.
-                await new Promise(r => setTimeout(r, 1000)); 
-
-            } catch (error) {
-                console.error(`${hedef.tag} kullanıcısına DM gönderilemedi:`, error.message);
-                // Eğer DM kapalıysa veya ban yediysen döngüyü kır
-                break;
-            }
+        // Sadece senin ID'n (FORCES Sahibi)
+        const OWNER_ID = "1389930042200559706";
+        if (interaction.user.id !== OWNER_ID) {
+            return interaction.reply({ content: "❌ Bu özel yetenek sadece sahibime aittir.", ephemeral: true });
         }
 
-        // İşlem bittiğinde bildirim gönder
-        await interaction.followUp({ content: `✅ Spam tamamlandı! Başarıyla gönderilen: ${gönderilen}/${miktar}`, ephemeral: true });
+        const icerik = interaction.options.getString('mesaj');
+        let miktar = interaction.options.getInteger('tekrar') || 5;
+        if (miktar > 20) miktar = 20; // Botun ban yememesi için limit
+
+        // İlk mesaj (Görseldeki gibi Uygulama yanıtı)
+        await interaction.reply({ content: icerik });
+
+        // Döngü ile alt alta dizme
+        for (let i = 0; i < miktar - 1; i++) {
+            try {
+                // Discord Rate Limit koruması için kısa bekleme
+                await new Promise(res => setTimeout(res, 700));
+                await interaction.followUp({ content: icerik });
+            } catch (err) {
+                break; // Kanal kilitliyse dur
+            }
+        }
     }
 };
