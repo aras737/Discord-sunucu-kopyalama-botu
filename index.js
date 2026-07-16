@@ -5,7 +5,8 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Render sunucuları için portu 10000 standardına sabitliyoruz
+const PORT = process.env.PORT || 10000; 
 
 app.get('/', (req, res) => res.send('Zen Bot 7/24 Aktif!'));
 app.listen(PORT, () => console.log(`[Web] Web sunucusu ${PORT} portunda açıldı.`));
@@ -15,7 +16,8 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMembers // Üyelere rol verebilmek için bu intent şarttır kanka
     ]
 });
 
@@ -54,16 +56,64 @@ client.once('ready', async () => {
     }
 });
 
+// Etkileşim Dinleyicisi (Komutlar ve Butonlar)
 client.on('interactionCreate', async interaction => {
-    if (interaction.isCommand()) {
+    
+    // ── 🛡️ VERIFY BUTON KODU BAŞLANGICI ──
+    if (interaction.isButton() && interaction.customId === 'forces_verify_btn') {
+        // BURAYA SUNUCUNDAKİ DOĞRULANMIŞ ROLÜN ID'SİNİ YAPIŞTIR KANKA:
+        const VERILECEK_ROL_ID = '123456789012345678'; 
+        
+        const role = interaction.guild?.roles.cache.get(VERILECEK_ROL_ID);
+        if (!role) {
+            return await interaction.reply({ 
+                content: '❌ Doğrulama rolü sunucuda bulunamadı. Lütfen yöneticiye bildirin.', 
+                flags: 64 // Ephemeral (Gizli mesaj)
+            }).catch(() => {});
+        }
+
+        try {
+            await interaction.member.roles.add(role);
+            return await interaction.reply({ 
+                content: '✅ Başarıyla doğrulandınız! Sunucu kanalları sizin için açıldı.', 
+                flags: 64 
+            }).catch(() => {});
+        } catch (error) {
+            console.error('[Verify Rol Verme Hatası]:', error);
+            return await interaction.reply({ 
+                content: '❌ Rol verilemedi. Botun rolünü sunucu ayarlarından üste taşıyın.', 
+                flags: 64 
+            }).catch(() => {});
+        }
+    }
+    // ── 🛡️ VERIFY BUTON KODU BİTİŞI ──
+
+
+    // ── 🚀 SLASH KOMUT TETİKLEYİCİSİ ──
+    if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
+        
         try {
             await command.execute(interaction);
         } catch (error) {
-            console.error(error);
+            console.error(`[Komut Hatası] ${interaction.commandName} çalışırken patladı:`, error);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ 
+                    content: 'Bu komut çalıştırılırken bir hata oluştu!', 
+                    flags: 64 
+                }).catch(() => {});
+            }
         }
     }
 });
 
-client.login(process.env.TOKEN);
+// ── 🔑 DISCORD BAĞLANTI VE HATA KONTROLÜ ──
+if (!process.env.TOKEN) {
+    console.error("[Kritik Hata] Render üzerinde veya .env dosyasında TOKEN bulunamadı!");
+} else {
+    console.log("[Bot] Discord API'sine bağlanılmaya çalışılıyor...");
+    client.login(process.env.TOKEN).catch(err => {
+        console.error("[Giriş Hatası] Bot Discord'a bağlanırken patladı! Sebep:", err.message);
+    });
+}
