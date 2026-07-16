@@ -12,11 +12,9 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('verify-kur')
         .setDescription('Sunucu için güvenli doğrulama panelini kurar.')
-        // KESİN ÇÖZÜM: Sadece YÖNETİCİ (Administrator) yetkisi olanlar görebilir ve kullanabilir
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), // Sadece Yöneticiler kullanabilir
 
     async execute(interaction) {
-        // Komutun sadece sunucu içinde çalışmasını garanti ediyoruz
         if (!interaction.guild) {
             return await interaction.reply({ 
                 content: '❌ Bu komut sadece sunucu içerisinde kullanılabilir.', 
@@ -24,23 +22,25 @@ module.exports = {
             });
         }
 
+        // Şık bir doğrulama embed tasarımı
         const verifyEmbed = new EmbedBuilder()
             .setColor('#00ffcc')
             .setTitle('🛡️ Sunucu Doğrulama Sistemi')
             .setDescription('Sunucudaki diğer kanallara erişim sağlamak ve topluluğumuza katılmak için aşağıdaki **Doğrula** butonuna tıklayın.')
-            .setFooter({ text: `${interaction.guild.name} Güvenlik Sistemi` })
+            .setFooter({ text: `${interaction.guild.name} Güvenlik Sistemi`, iconURL: interaction.guild.iconURL() })
             .setTimestamp();
 
+        // Tıklanacak buton
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('verify_button')
+                .setCustomId('forces_verify_btn')
                 .setLabel('✅ Doğrula')
                 .setStyle(ButtonStyle.Success)
         );
 
-        // Paneli kanala herkesin göreceği şekilde gönderiyoruz
+        // Komutu yazana gizli bildirim yolluyoruz, kanala embed fırlatıyoruz
         await interaction.reply({ 
-            content: '⚙️ Doğrulama paneli başarıyla kuruldu.', 
+            content: '⚙️ Doğrulama paneli başarıyla oluşturuldu.', 
             flags: MessageFlags.Ephemeral 
         });
         
