@@ -22,7 +22,6 @@ module.exports = {
         const type = interaction.options.getString('tip');
         const assetId = interaction.options.getString('id').trim();
 
-        // Sayı kontrolü
         if (!/^\d+$/.test(assetId)) {
             return interaction.reply({ 
                 content: '❌ Lütfen geçerli bir Roblox ID\'si girin (Sadece sayılardan oluşmalıdır).', 
@@ -32,40 +31,57 @@ module.exports = {
 
         await interaction.deferReply();
 
-        try {
-            // Roblox Asset Delivery API
-            const robloxApiUrl = `https://assetdelivery.roblox.com/v1/asset/?id=${assetId}`;
-            
-            // Render IP engeline takılmamak için tarayıcı taklidi yapıyoruz
-            const response = await fetch(robloxApiUrl, {
-                method: 'GET',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'application/json, text/plain, */*',
-                    'Accept-Language': 'en-US,en;q=0.9'
+        // Ortak Tarayıcı Başlıkları (Spoofing)
+        const requestHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        };
+
+        // Sırasıyla denenecek Roblox API URL'leri (Bypass amacıyla alternatifler eklenmiştir)
+        const urlsToTry = [
+            `https://assetdelivery.roblox.com/v1/asset/?id=${assetId}`,
+            `https://roblox.com/asset/?id=${assetId}`,
+            `https://www.roblox.com/asset/?id=${assetId}`
+        ];
+
+        let response = null;
+        let successUrl = null;
+
+        // URL'leri sırayla dene (Hangisi çalışırsa)
+        for (const url of urlsToTry) {
+            try {
+                const res = await fetch(url, { method: 'GET', headers: requestHeaders });
+                if (res.ok) {
+                    const checkBuffer = await res.clone().arrayBuffer();
+                    // Eğer dönen veri çok küçükse boş veya hata sayfasıdır, atla
+                    if (checkBuffer.byteLength > 100) {
+                        response = res;
+                        successUrl = url;
+                        break;
+                    }
                 }
-            });
-
-            if (!response.ok) {
-                return interaction.editReply({ content: '❌ Roblox API\'sine bağlanırken bir sorun oluştu. (IP veya Erişim Engeli)' });
+            } catch (err) {
+                console.log(`${url} adresi denenirken hata oluştu, diğerine geçiliyor...`);
             }
+        }
 
-            // Dosyayı arrayBuffer ve ardından Buffer'a çeviriyoruz
+        if (!response) {
+            return interaction.editReply({ 
+                content: '❌ Roblox API engeli aşılamadı. Sunucu IP adresi Roblox tarafından tamamen engellenmiş veya varlık gizli/silinmiş.' 
+            });
+        }
+
+        try {
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
-
-            // Dosya doğrulama (Eğer çok küçükse büyük ihtimalle boş veya gizlidir)
-            if (buffer.length < 100) {
-                return interaction.editReply({ 
-                    content: '❌ Bu ID\'ye ait veri bulunamadı veya varlık gizli/silinmiş.' 
-                });
-            }
 
             let fileName = '';
             let fileTitle = '';
             let fileEmoji = '';
 
-            // Seçilen tipe göre dosya uzantısını ve başlığı ayarlıyoruz
             switch (type) {
                 case 'sound':
                     fileName = `roblox_sound_${assetId}.mp3`;
@@ -74,7 +90,7 @@ module.exports = {
                     break;
                 case 'animation':
                     fileName = `roblox_anim_${assetId}.rbxm`;
-                    fileTitle = 'Animasyon Verisi Kopyalandı';
+                    fileTitle = 'Animasyon Verisi Kopyalandı (Spoofed)';
                     fileEmoji = '🏃';
                     break;
                 case 'model':
@@ -87,22 +103,22 @@ module.exports = {
             const attachment = new AttachmentBuilder(buffer, { name: fileName });
 
             const embed = new EmbedBuilder()
-                .setColor('#00aaff')
+                .setColor('#00ff77')
                 .setTitle(`${fileEmoji} Roblox ${fileTitle}!`)
-                .setDescription(`İstediğin varlık Roblox sunucularından başarıyla kopyalandı. İndirdiğin dosyayı direkt kullanabilirsin.`)
+                .setDescription(`İstediğin varlık alternatif hatlar kullanılarak Roblox sunucularından başarıyla çekildi.`)
                 .addFields(
                     { name: 'Varlık Tipi', value: `\`${type.toUpperCase()}\``, inline: true },
                     { name: 'Varlık ID', value: `\`${assetId}\``, inline: true },
+                    { name: 'Kullanılan Hat', value: `\`API Spoof v2\``, inline: false },
                     { name: 'Bağlantı', value: `[Roblox Sayfası](https://www.roblox.com/library/${assetId})`, inline: false }
                 )
-                .setFooter({ text: 'Roblox Asset Downloader & Cloner' })
+                .setFooter({ text: 'Roblox Asset Downloader & Spoofer' })
                 .setTimestamp();
 
-            // Animasyon ve Model için hatırlatma ekleyelim
             if (type === 'animation' || type === 'model') {
                 embed.addFields({ 
-                    name: '💡 Nasıl Kullanılır?', 
-                    value: 'İndirdiğin `.rbxm` dosyasını direkt olarak açık olan **Roblox Studio** ekranının içine sürükleyip bırakarak kullanabilirsin.' 
+                    name: '💡 Roblox Studio Notu', 
+                    value: 'İndirdiğin `.rbxm` uzantılı dosyayı direkt olarak **Roblox Studio** projenin içerisine sürükleyip bırakarak (Import) entegre edebilirsin.' 
                 });
             }
 
@@ -110,7 +126,7 @@ module.exports = {
 
         } catch (error) {
             console.error('Kopyalama hatası:', error);
-            await interaction.editReply({ content: '❌ Dosya kopyalanırken teknik bir hata meydana geldi.' });
+            await interaction.editReply({ content: '❌ Dosya işlenirken teknik bir hata meydana geldi.' });
         }
     },
 };
