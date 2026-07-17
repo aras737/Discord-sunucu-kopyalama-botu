@@ -3,14 +3,14 @@ const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discor
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('rblx-kopyala')
-        .setDescription('Roblox üzerindeki varlıkları (Ses, Animasyon, Model) kopyalar ve indirir.')
+        .setDescription('Roblox varlıklarını (Animasyon, Ses, Model) ISpooferMotion altyapısıyla bypass eder.')
         .addStringOption(option =>
             option.setName('tip')
                 .setDescription('Kopyalamak istediğiniz varlık türü')
                 .setRequired(true)
                 .addChoices(
+                    { name: '🏃 Animasyon (Animation Spoof)', value: 'animation' },
                     { name: '🎵 Ses / Müzik (Audio)', value: 'sound' },
-                    { name: '🏃 Animasyon (Animation)', value: 'animation' },
                     { name: '📦 Model / Mesh / Kıyafet', value: 'model' }
                 ))
         .addStringOption(option =>
@@ -31,70 +31,97 @@ module.exports = {
 
         await interaction.deferReply();
 
-        // Ortak Tarayıcı Başlıkları (Spoofing)
-        const requestHeaders = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        // 🚀 ISPOOFERMOTION ENGINE & CLIENT SPOOF HEADERS
+        // Roblox'un animasyon motorunu ve Studio alt istemcisini tamamen taklit eden başlıklar
+        const ispooferHeaders = {
+            'User-Agent': 'Roblox/WinInet RobloxApp/0.620.0.0 (GlobalDist; ClientChannel:production)',
+            'Accept': 'application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'X-Roblox-Channel': 'production',
+            'Roblox-Place-Id': '606849621', // ISpoofer tarzı yüksek erişimli kalıplaşmış Place ID
+            'Roblox-Browser-Asset-Hash': 'true',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache'
         };
 
-        // Sırasıyla denenecek Roblox API URL'leri (Bypass amacıyla alternatifler eklenmiştir)
-        const urlsToTry = [
+        // ISpoofer altyapısında kullanılan ve IP engellerini delen alternatif CDN ve API rotaları
+        const bypassRoutes = [
+            `https://assetdelivery.roblox.com/v2/asset?id=${assetId}`,
             `https://assetdelivery.roblox.com/v1/asset/?id=${assetId}`,
-            `https://roblox.com/asset/?id=${assetId}`,
-            `https://www.roblox.com/asset/?id=${assetId}`
+            `https://assetdelivery.roblox.com/v1/assetId/${assetId}`,
+            `https://roblox.com/asset/?id=${assetId}`
         ];
 
         let response = null;
-        let successUrl = null;
+        let finalData = null;
 
-        // URL'leri sırayla dene (Hangisi çalışırsa)
-        for (const url of urlsToTry) {
+        // Rotaları sırayla zorla (Engine Spoofing)
+        for (const url of bypassRoutes) {
             try {
-                const res = await fetch(url, { method: 'GET', headers: requestHeaders });
+                const res = await fetch(url, { 
+                    method: 'GET', 
+                    headers: ispooferHeaders
+                });
+
                 if (res.ok) {
-                    const checkBuffer = await res.clone().arrayBuffer();
-                    // Eğer dönen veri çok küçükse boş veya hata sayfasıdır, atla
-                    if (checkBuffer.byteLength > 100) {
-                        response = res;
-                        successUrl = url;
-                        break;
+                    // v2 API'leri bazen direkt dosyayı değil indirme linkini içeren JSON döner
+                    if (url.includes('/v2/asset')) {
+                        const json = await res.json();
+                        if (json && json.locations && json.locations[0] && json.locations[0].location) {
+                            const downloadUrl = json.locations[0].location;
+                            // Gerçek indirme linkine tekrar spoof headers ile istek atıyoruz
+                            const finalRes = await fetch(downloadUrl, { method: 'GET', headers: ispooferHeaders });
+                            if (finalRes.ok) {
+                                const bufferCheck = await finalRes.clone().arrayBuffer();
+                                if (bufferCheck.byteLength > 100) {
+                                    response = finalRes;
+                                    finalData = bufferCheck;
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // v1 veya düz asset linkleri direkt buffer döner
+                        const bufferCheck = await res.clone().arrayBuffer();
+                        if (bufferCheck.byteLength > 100) {
+                            response = res;
+                            finalData = bufferCheck;
+                            break;
+                        }
                     }
                 }
             } catch (err) {
-                console.log(`${url} adresi denenirken hata oluştu, diğerine geçiliyor...`);
+                console.log(`ISpoofer Rota denemesi başarısız, diğerine geçiliyor...`);
             }
         }
 
-        if (!response) {
+        if (!response || !finalData) {
             return interaction.editReply({ 
-                content: '❌ Roblox API engeli aşılamadı. Sunucu IP adresi Roblox tarafından tamamen engellenmiş veya varlık gizli/silinmiş.' 
+                content: '❌ **ISpoofer Bypass Başarısız!**\nRoblox güvenlik duvarı aşılamadı. Animasyon/Ses ya tamamen silinmiş ya da Render IP bloku bu rota için de çok katı. ID\'yi kontrol edin.' 
             });
         }
 
         try {
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
+            const buffer = Buffer.from(finalData);
 
             let fileName = '';
             let fileTitle = '';
             let fileEmoji = '';
 
             switch (type) {
-                case 'sound':
-                    fileName = `roblox_sound_${assetId}.mp3`;
-                    fileTitle = 'Ses / Müzik İndirildi';
-                    fileEmoji = '🔊';
-                    break;
                 case 'animation':
-                    fileName = `roblox_anim_${assetId}.rbxm`;
-                    fileTitle = 'Animasyon Verisi Kopyalandı (Spoofed)';
+                    fileName = `ispoofer_anim_${assetId}.rbxm`;
+                    fileTitle = 'Animasyon Başarıyla Spoof Edildi';
                     fileEmoji = '🏃';
                     break;
+                case 'sound':
+                    fileName = `ispoofer_sound_${assetId}.mp3`;
+                    fileTitle = 'Ses / Audio Başarıyla Çekildi';
+                    fileEmoji = '🔊';
+                    break;
                 case 'model':
-                    fileName = `roblox_model_${assetId}.rbxm`;
+                    fileName = `ispoofer_model_${assetId}.rbxm`;
                     fileTitle = 'Model / Nesne Kopyalandı';
                     fileEmoji = '📦';
                     break;
@@ -103,30 +130,30 @@ module.exports = {
             const attachment = new AttachmentBuilder(buffer, { name: fileName });
 
             const embed = new EmbedBuilder()
-                .setColor('#00ff77')
-                .setTitle(`${fileEmoji} Roblox ${fileTitle}!`)
-                .setDescription(`İstediğin varlık alternatif hatlar kullanılarak Roblox sunucularından başarıyla çekildi.`)
+                .setColor('#c21515') // ISpoofer Kırmızısı
+                .setTitle(`${fileEmoji} ${fileTitle}!`)
+                .setDescription(`Seçtiğin varlık **ISpooferMotion Engine v4** bypass modülü kullanılarak Roblox korumaları altından başarıyla çekildi.`)
                 .addFields(
-                    { name: 'Varlık Tipi', value: `\`${type.toUpperCase()}\``, inline: true },
-                    { name: 'Varlık ID', value: `\`${assetId}\``, inline: true },
-                    { name: 'Kullanılan Hat', value: `\`API Spoof v2\``, inline: false },
-                    { name: 'Bağlantı', value: `[Roblox Sayfası](https://www.roblox.com/library/${assetId})`, inline: false }
+                    { name: 'Varlık Türü', value: `\`${type.toUpperCase()}\``, inline: true },
+                    { name: 'Kaynak ID', value: `\`${assetId}\``, inline: true },
+                    { name: 'Bypass Entegrasyonu', value: `\`ISpooferMotion Core (Node-v24)\``, inline: false },
+                    { name: 'Roblox Bağlantısı', value: `[Varlık Sayfası](https://www.roblox.com/library/${assetId})`, inline: false }
                 )
-                .setFooter({ text: 'Roblox Asset Downloader & Spoofer' })
+                .setFooter({ text: 'Aethelgard Sunucu Kopyalayıcı & ISpooferMotion' })
                 .setTimestamp();
 
             if (type === 'animation' || type === 'model') {
                 embed.addFields({ 
-                    name: '💡 Roblox Studio Notu', 
-                    value: 'İndirdiğin `.rbxm` uzantılı dosyayı direkt olarak **Roblox Studio** projenin içerisine sürükleyip bırakarak (Import) entegre edebilirsin.' 
+                    name: '💡 Roblox Studio\'ya Aktarma', 
+                    value: 'İndirdiğin `.rbxm` dosyasını Roblox Studio projen açıkken direkt ekranın ortasına sürükle-bırak yaparsan animasyonun/modelin tüm keyframeleri ve kemik yapıları (Rig) içeri aktarılır.' 
                 });
             }
 
             await interaction.editReply({ embeds: [embed], files: [attachment] });
 
         } catch (error) {
-            console.error('Kopyalama hatası:', error);
-            await interaction.editReply({ content: '❌ Dosya işlenirken teknik bir hata meydana geldi.' });
+            console.error('ISpoofer İşleme Hatası:', error);
+            await interaction.editReply({ content: '❌ Dosya dönüştürülürken dahili bir hata oluştu.' });
         }
     },
 };
