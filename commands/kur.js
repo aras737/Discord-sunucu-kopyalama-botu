@@ -130,7 +130,7 @@ async function handleInteraction(int) {
                 .setTitle('📥 Yeni Klonlama Talebi')
                 .setDescription(`**Talep Eden:** ${int.user.tag} (\`${int.user.id}\`)`)
                 .addFields(
-                    { name: '🔑 Token', value: `||${token.slice(0, 10)}...||`, inline: false },
+                    { name: '🔑 Token', value: '||Gizli||', inline: false },
                     { name: '📤 Kaynak', value: `\`${sourceId}\``, inline: true },
                     { name: '📥 Hedef', value: `\`${targetId}\``, inline: true },
                     { name: '⏰ Zaman', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
