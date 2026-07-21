@@ -185,29 +185,73 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             }
             await owner.send(`✅ **${inviteCount}** davet silindi.`);
 
-            // Sunucu ayarlarını sıfırlama
-            await owner.send("⚙️ **Sunucu Ayarları Sıfırlanıyor...**");
+            // Sunucu ayarlarını sıfırlama - DÜZELTİLDİ
+            await owner.send("⚙️ **Sunucu Ayarları Kopyalanıyor...**");
             try {
                 await checkRateLimit();
-                await trg.edit({
-                    verificationLevel: 0,
-                    defaultMessageNotifications: 0,
-                    explicitContentFilter: 0,
-                    afkTimeout: 300,
-                    publicUpdatesChannelId: null,
-                    rulesChannelId: null,
-                    systemChannelId: null
-                });
+                
+                // Kaynak sunucunun ayarlarını al
+                const srcSettings = {
+                    verificationLevel: src.verificationLevel || 0,
+                    defaultMessageNotifications: src.defaultMessageNotifications || 0,
+                    explicitContentFilter: src.explicitContentFilter || 0,
+                    afkTimeout: src.afkTimeout || 300,
+                    publicUpdatesChannelId: src.publicUpdatesChannelId || null,
+                    rulesChannelId: src.rulesChannelId || null,
+                    systemChannelId: src.systemChannelId || null
+                };
+                
+                // Hedef sunucuya uygula (sadece izin verilen değerlerle)
+                const updateData = {};
+                
+                // verificationLevel: 0-4 arası değerler alabilir
+                if (srcSettings.verificationLevel >= 0 && srcSettings.verificationLevel <= 4) {
+                    updateData.verificationLevel = srcSettings.verificationLevel;
+                }
+                
+                // defaultMessageNotifications: 0 veya 1
+                if ([0, 1].includes(srcSettings.defaultMessageNotifications)) {
+                    updateData.defaultMessageNotifications = srcSettings.defaultMessageNotifications;
+                }
+                
+                // explicitContentFilter: 0, 1 veya 2
+                if ([0, 1, 2].includes(srcSettings.explicitContentFilter)) {
+                    updateData.explicitContentFilter = srcSettings.explicitContentFilter;
+                }
+                
+                // afkTimeout: 60-3600 arası
+                if (srcSettings.afkTimeout >= 60 && srcSettings.afkTimeout <= 3600) {
+                    updateData.afkTimeout = srcSettings.afkTimeout;
+                }
+                
+                // Kanal ID'leri (null veya geçerli ID)
+                if (srcSettings.publicUpdatesChannelId) {
+                    updateData.publicUpdatesChannelId = srcSettings.publicUpdatesChannelId;
+                }
+                if (srcSettings.rulesChannelId) {
+                    updateData.rulesChannelId = srcSettings.rulesChannelId;
+                }
+                if (srcSettings.systemChannelId) {
+                    updateData.systemChannelId = srcSettings.systemChannelId;
+                }
+                
+                // Sadece geçerli ayarları gönder
+                if (Object.keys(updateData).length > 0) {
+                    await trg.edit(updateData);
+                    await owner.send("✅ Sunucu ayarları kopyalandı.");
+                } else {
+                    await owner.send("⚠️ Kopyalanacak geçerli ayar bulunamadı.");
+                }
+                
                 await jitter(1000);
-                await owner.send("✅ Sunucu ayarları sıfırlandı.");
             } catch (err) {
-                await owner.send(`⚠️ Sunucu ayarları sıfırlanamadı: ${err.message}`);
+                await owner.send(`⚠️ Sunucu ayarları kopyalanamadı: ${err.message}`);
             }
 
             await owner.send("🧹 **Temizlik Tamamlandı:** Hedef sunucudaki tüm içerikler başarıyla silindi.");
 
             // --- 2. AŞAMA: AYARLAR VE ROLLERİN YENİDEN OLUŞTURULMASI ---
-            await owner.send("🔄 **Sunucu Ayarları Kopyalanıyor...**");
+            await owner.send("🔄 **Sunucu Görünümü Kopyalanıyor...**");
             
             await checkRateLimit();
             await trg.setName(src.name).catch(() => {});
